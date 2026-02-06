@@ -1,9 +1,9 @@
 // Dummy data for the entire app. All state is managed locally in components.
 export const dummyData = {
   employees: [
-    { id: 1, name: 'Umer', email: 'umer@employee', role: 'Employee' },
-    { id: 2, name: 'Faizan', email: 'faizan@employee', role: 'Employee' },
-    { id: 3, name: 'Abdurrehman', email: 'abdurrehman@admin', role: 'Admin' },
+    { id: 1, name: 'Umer', email: 'umer@employee', role: 'Employee' , password : "umer1"},
+    { id: 2, name: 'Faizan', email: 'faizan@employee', role: 'Employee' , password:" faizan1"},
+    { id: 3, name: 'Abdurrehman', email: 'abdurrehman@admin', role: 'Admin' , password: "admin1" },
   ],
   attendance: {
     // Monthly data for current month (e.g., October 2023). Format: { date: { employeeId: { status: 'Present'|'Absent'|'Leave', notes: '' } } }
@@ -21,4 +21,6 @@ export const dummyData = {
   ],
   weeklyAttendance: [5, 6, 4, 7, 5, 6, 5], // Dummy weekly data for line chart (Mon-Sun)
   statusCounts: { Present: 10, Absent: 3, OnLeave: 2 }, // For donut chart
+
+  
 };
