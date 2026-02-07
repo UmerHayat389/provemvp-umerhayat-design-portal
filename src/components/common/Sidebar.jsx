@@ -6,11 +6,21 @@ import { X, Home, Calendar, UserCheck } from 'lucide-react';
 const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
   const location = useLocation();
 
-  const links = [
-    { to: '/', label: 'Dashboard', icon: <Home size={20} /> },
-    { to: '/attendance', label: 'Attendance', icon: <Calendar size={20} /> },
-    { to: '/leave', label: 'Leave', icon: <UserCheck size={20} /> },
+  // Different links based on user role
+  const adminLinks = [
+    { to: '/admin/dashboard', label: 'Dashboard', icon: <Home size={20} /> },
+    { to: '/admin/attendance', label: 'Attendance', icon: <Calendar size={20} /> },
+    { to: '/admin/leave', label: 'Leave Requests', icon: <UserCheck size={20} /> },
   ];
+
+  const employeeLinks = [
+    { to: '/employee/dashboard', label: 'Dashboard', icon: <Home size={20} /> },
+    { to: '/employee/attendance', label: 'My Attendance', icon: <Calendar size={20} /> },
+    { to: '/employee/leave', label: 'My Leave', icon: <UserCheck size={20} /> },
+  ];
+
+  // Select links based on user role
+  const links = user?.role === 'Admin' ? adminLinks : employeeLinks;
 
   const handleLinkClick = () => setSidebarOpen(false);
 
@@ -19,7 +29,7 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
       {/* Overlay with fade animation */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-40 z-40 md:hidden animate-fadeIn"
+          className="fixed inset-0 bg-opacity-30 backdrop-blur-sm z-40 md:hidden animate-fadeIn"
           onClick={() => setSidebarOpen(false)}
         />
       )}
