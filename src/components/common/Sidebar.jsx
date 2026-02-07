@@ -3,9 +3,6 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { X, Home, Calendar, UserCheck } from 'lucide-react';
 
-// Make sure to import the font in your main index.css or tailwind config
-// Example: @import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');
-
 const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
   const location = useLocation();
 
@@ -19,71 +16,109 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
 
   return (
     <>
-      {/* 🔹 Overlay (mobile only) */}
+      {/* Overlay with fade animation */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-40 z-40 md:hidden"
+          className="fixed inset-0 bg-black bg-opacity-40 z-40 md:hidden animate-fadeIn"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-md p-4
-          transform transition-transform duration-300 ease-in-out
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl p-4
+          transform transition-transform duration-300 ease-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          md:relative md:translate-x-0 md:shadow-none`}
+          md:relative md:translate-x-0 md:shadow-lg`}
       >
-        {/* 🔹 Header */}
-        <div className="flex items-center justify-between mb-6">
-          {/* Logo + text container */}
-          <div className="flex items-center gap-2">
-            {/* Slightly smaller logo */}
-            <img
-              src="https://cdn.freebiesupply.com/logos/large/2x/one-1-logo-svg-vector.svg"
-              alt="ProveMVP Logo"
-              className="h-8 w-8 object-cover rounded-full shadow-md"
-            />
-            {/* Attractive logo text */}
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3 group">
+            {/* Logo with pulse animation on hover */}
+            <div className="relative">
+              <img
+                src="https://cdn.freebiesupply.com/logos/large/2x/one-1-logo-svg-vector.svg"
+                alt="ProveMVP Logo"
+                className="h-9 w-9 object-cover rounded-full shadow-lg 
+                  transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6"
+              />
+              {/* Subtle glow effect */}
+              <div className="absolute inset-0 rounded-full bg-[#0C2B4E] opacity-0 
+                group-hover:opacity-20 blur-md transition-opacity duration-300" />
+            </div>
+
+            {/* Logo text with gradient effect */}
             <span
-              className="text-lg font-bold text-[#0C2B4E] drop-shadow-sm"
-              style={{ 
-                fontFamily: "'Pacifico', cursive", 
-                color: '#0C2B4E' // subtle attractive accent color
-              }}
+              className="text-xl font-bold bg-gradient-to-r from-[#0C2B4E] to-[#1a4d7a] 
+                bg-clip-text text-transparent drop-shadow-sm
+                transition-all duration-300 group-hover:tracking-wide"
+              style={{ fontFamily: "'Pacifico', cursive" }}
             >
               ProveMVP
             </span>
           </div>
 
-          {/* Close button (mobile only) */}
+          {/* Close button with rotation animation */}
           <button
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden text-gray-600 hover:text-black"
+            className="md:hidden text-gray-500 hover:text-[#0C2B4E] 
+              transition-all duration-300 hover:rotate-90 hover:scale-110"
           >
             <X size={24} />
           </button>
         </div>
 
-        {/* 🔹 Navigation */}
-        <nav>
-          {links.map((link) => (
+        {/* Navigation */}
+        <nav className="space-y-2">
+          {links.map((link, index) => (
             <Link
               key={link.to}
               to={link.to}
               onClick={handleLinkClick}
-              className={`flex items-center gap-3 py-3 px-4 mb-2 rounded-lg transition-all text-lg font-semibold
+              className={`flex items-center gap-3 py-3 px-4 rounded-xl 
+                transition-all duration-300 text-base font-semibold
+                group relative overflow-hidden
                 ${
                   location.pathname === link.to
-                    ? 'bg-[#0C2B4E] text-white shadow-md'
-                    : 'text-[#0C2B4E] hover:bg-gray-100 hover:shadow-sm'
+                    ? 'bg-[#0C2B4E] text-white shadow-lg scale-105'
+                    : 'text-[#0C2B4E] hover:bg-gray-50 hover:shadow-md hover:translate-x-1'
                 }`}
             >
-              {link.icon}
-              {link.label}
+              {/* Background slide effect on hover */}
+              <div className={`absolute inset-0 transition-transform duration-300 
+                ${location.pathname === link.to 
+                  ? 'bg-[#0C2B4E]' 
+                  : 'bg-gradient-to-r from-[#0C2B4E]/5 to-transparent translate-x-[-100%] group-hover:translate-x-0'
+                }`} 
+              />
+              
+              {/* Icon with bounce animation */}
+              <span className="relative z-10 transition-transform duration-300 group-hover:scale-110">
+                {link.icon}
+              </span>
+              
+              {/* Label */}
+              <span className="relative z-10">{link.label}</span>
+
+              {/* Active indicator dot */}
+              {location.pathname === link.to && (
+                <span className="absolute right-4 w-2 h-2 bg-white rounded-full animate-pulse" />
+              )}
             </Link>
           ))}
         </nav>
       </aside>
+
+      {/* Custom animations */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </>
   );
 };

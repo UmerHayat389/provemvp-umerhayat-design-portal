@@ -198,8 +198,8 @@ const AdminAttendance = () => {
 
       {/* ===== MODAL ===== */}
       {modalData && (
-        <div className="fixed inset-0 bg-[#0C2B4E] bg-opacity-30 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-4xl relative animate-fadeIn">
+        <div className="fixed inset-0   bg-black/30 backdrop-blur-md flex justify-center items-center z-50 p-4 border-black">
+          <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-4xl relative animate-fadeIn">
             
             {/* Close Button */}
             <button
