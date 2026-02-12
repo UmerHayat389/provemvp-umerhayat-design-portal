@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Calendar, CheckCircle, Clock, AlertCircle, TrendingUp, Briefcase } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
 const EmployeeDashboard = () => {
-  const textColor = "#0C2B4E";
+  const { isDark } = useTheme();
+  const textColor = isDark ? "#E5E7EB" : "#0C2B4E";
   
-  // Sample data
   const projectData = [
     { name: 'Mon', completed: 4, inProgress: 2 },
     { name: 'Tue', completed: 3, inProgress: 3 },
@@ -45,24 +46,44 @@ const EmployeeDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white w-full overflow-x-hidden">
+    <div className="min-h-screen bg-white dark:bg-gray-950 w-full overflow-x-hidden transition-colors duration-200">
       <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+        
         {/* Header */}
-        <div className="mb-6 sm:mb-8 md:mb-10">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2" style={{ color: textColor }}>
+        <div className="mb-6 sm:mb-8 md:mb-10" style={{
+          opacity: 0,
+          animation: 'fadeIn 0.5s ease-out forwards'
+        }}>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2 text-gray-900 dark:text-gray-100">
             Employee Dashboard
           </h1>
-          <p className="text-xs sm:text-sm text-gray-500">Welcome back! Here's your project overview</p>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Welcome back! Here's your project overview</p>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
           {stats.map((stat, index) => (
-            <div key={index} className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-100">
+            <div 
+              key={index} 
+              className="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-6 shadow-sm border border-gray-100 dark:border-gray-700"
+              style={{
+                transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                opacity: 0,
+                animation: `fadeIn 0.5s ease-out ${index * 100}ms forwards`
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.15), 0 4px 6px -2px rgba(0,0,0,0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06)';
+              }}
+            >
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-gray-500 text-[10px] sm:text-xs md:text-sm mb-1 truncate">{stat.label}</p>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-bold" style={{ color: textColor }}>
+                  <p className="text-gray-500 dark:text-gray-400 text-[10px] sm:text-xs md:text-sm mb-1 truncate">{stat.label}</p>
+                  <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100">
                     {stat.value}
                   </h3>
                 </div>
@@ -79,35 +100,42 @@ const EmployeeDashboard = () => {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+          
           {/* Weekly Activity */}
-          <div className="lg:col-span-2 bg-white rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-sm border border-gray-100">
-            <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-3 sm:mb-4 md:mb-6" style={{ color: textColor }}>
+          <div 
+            className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-sm border border-gray-100 dark:border-gray-700"
+            style={{
+              transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+              opacity: 0,
+              animation: 'fadeIn 0.6s ease-out 0.4s forwards'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)';
+              e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0,0,0,0.15), 0 10px 10px -5px rgba(0,0,0,0.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06)';
+            }}
+          >
+            <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-3 sm:mb-4 md:mb-6 text-gray-900 dark:text-gray-100">
               Weekly Activity
             </h2>
             <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={250} className="sm:!h-[280px] md:!h-[300px]">
                 <BarChart data={projectData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis 
-                    dataKey="name" 
-                    stroke={textColor} 
-                    tick={{ fontSize: 11 }}
-                    className="sm:!text-xs md:!text-sm"
-                  />
-                  <YAxis 
-                    stroke={textColor} 
-                    tick={{ fontSize: 11 }}
-                    className="sm:!text-xs md:!text-sm"
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#f0f0f0'} />
+                  <XAxis dataKey="name" stroke={isDark ? '#9CA3AF' : textColor} tick={{ fontSize: 11 }} />
+                  <YAxis stroke={isDark ? '#9CA3AF' : textColor} tick={{ fontSize: 11 }} />
                   <Tooltip 
-                    contentStyle={{ fontSize: '12px' }}
-                    wrapperClassName="!text-xs sm:!text-sm"
+                    contentStyle={{ 
+                      fontSize: '12px',
+                      backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+                      borderColor: isDark ? '#374151' : '#E5E7EB',
+                      color: isDark ? '#E5E7EB' : '#111827'
+                    }}
                   />
-                  <Legend 
-                    wrapperStyle={{ fontSize: '11px' }}
-                    iconSize={10}
-                    className="sm:!text-xs md:!text-sm"
-                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', color: isDark ? '#E5E7EB' : '#111827' }} iconSize={10} />
                   <Bar dataKey="completed" fill="#10b981" radius={[8, 8, 0, 0]} name="Completed" />
                   <Bar dataKey="inProgress" fill="#f59e0b" radius={[8, 8, 0, 0]} name="In Progress" />
                 </BarChart>
@@ -116,8 +144,23 @@ const EmployeeDashboard = () => {
           </div>
 
           {/* Task Distribution */}
-          <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-sm border border-gray-100">
-            <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-3 sm:mb-4 md:mb-6" style={{ color: textColor }}>
+          <div 
+            className="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-sm border border-gray-100 dark:border-gray-700"
+            style={{
+              transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+              opacity: 0,
+              animation: 'fadeIn 0.6s ease-out 0.5s forwards'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)';
+              e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0,0,0,0.15), 0 10px 10px -5px rgba(0,0,0,0.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06)';
+            }}
+          >
+            <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-3 sm:mb-4 md:mb-6 text-gray-900 dark:text-gray-100">
               Task Distribution
             </h2>
             <div className="w-full overflow-hidden">
@@ -131,13 +174,19 @@ const EmployeeDashboard = () => {
                     outerRadius={75}
                     paddingAngle={5}
                     dataKey="value"
-                    className="sm:!innerRadius-[50] sm:!outerRadius-[85] md:!innerRadius-[60] md:!outerRadius-[100]"
                   >
                     {taskDistribution.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ fontSize: '12px' }} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      fontSize: '12px',
+                      backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+                      borderColor: isDark ? '#374151' : '#E5E7EB',
+                      color: isDark ? '#E5E7EB' : '#111827'
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -145,13 +194,10 @@ const EmployeeDashboard = () => {
               {taskDistribution.map((item, index) => (
                 <div key={index} className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
-                    <div 
-                      className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full flex-shrink-0" 
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-xs sm:text-sm truncate" style={{ color: textColor }}>{item.name}</span>
+                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                    <span className="text-xs sm:text-sm truncate text-gray-900 dark:text-gray-100">{item.name}</span>
                   </div>
-                  <span className="text-xs sm:text-sm font-semibold ml-2 flex-shrink-0" style={{ color: textColor }}>
+                  <span className="text-xs sm:text-sm font-semibold ml-2 flex-shrink-0 text-gray-900 dark:text-gray-100">
                     {item.value}%
                   </span>
                 </div>
@@ -161,22 +207,44 @@ const EmployeeDashboard = () => {
         </div>
 
         {/* Recent Projects */}
-        <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-sm border border-gray-100">
-          <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-3 sm:mb-4 md:mb-6" style={{ color: textColor }}>
+        <div 
+          className="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-sm border border-gray-100 dark:border-gray-700"
+          style={{
+            transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+            opacity: 0,
+            animation: 'fadeIn 0.6s ease-out 0.6s forwards'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0,0,0,0.15), 0 10px 10px -5px rgba(0,0,0,0.08)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06)';
+          }}
+        >
+          <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-3 sm:mb-4 md:mb-6 text-gray-900 dark:text-gray-100">
             Assigned Projects
           </h2>
           <div className="space-y-3 sm:space-y-4">
             {recentProjects.map((project) => (
               <div 
                 key={project.id} 
-                className="border border-gray-100 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow"
+                className="border border-gray-100 dark:border-gray-700 rounded-lg p-3 sm:p-4 bg-white dark:bg-gray-800"
+                style={{ transition: 'all 300ms ease' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.15), 0 4px 6px -2px rgba(0,0,0,0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-3">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold mb-1.5 sm:mb-2 text-sm sm:text-base truncate" style={{ color: textColor }}>
+                    <h3 className="font-semibold mb-1.5 sm:mb-2 text-sm sm:text-base truncate text-gray-900 dark:text-gray-100">
                       {project.name}
                     </h3>
-                    <div className="flex flex-col xs:flex-row xs:items-center gap-1.5 xs:gap-3 sm:gap-4 text-[11px] sm:text-xs text-gray-500">
+                    <div className="flex flex-col xs:flex-row xs:items-center gap-1.5 xs:gap-3 sm:gap-4 text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">
                       <span className="flex items-center gap-1 flex-shrink-0">
                         <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
                         <span className="truncate">Due: {project.deadline}</span>
@@ -193,12 +261,12 @@ const EmployeeDashboard = () => {
                     </div>
                   </div>
                   <div className="text-left sm:text-right flex-shrink-0">
-                    <span className="text-xl sm:text-2xl font-bold" style={{ color: textColor }}>
+                    <span className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
                       {project.progress}%
                     </span>
                   </div>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-1.5 sm:h-2">
+                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 sm:h-2">
                   <div 
                     className="h-1.5 sm:h-2 rounded-full transition-all duration-300"
                     style={{ 
@@ -212,6 +280,19 @@ const EmployeeDashboard = () => {
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 };

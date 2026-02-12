@@ -1,1 +1,20 @@
 @import "tailwindcss";
+
+/* ✅ REQUIRED for Tailwind v4: activate dark: classes when .dark is on <html> */
+@variant dark (&:where(.dark, .dark *));
+
+/* Smooth color transitions on ALL elements during theme switch */
+/* *, *::before, *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+}
+
+/* Prevent interfering with non-theme animations */
+[class*="animate-"] {
+  transition-duration: revert;
+} */
+
+/* Base background prevents white flash on <html> root level */
+html { background-color: #f3f4f6; }
+html.dark { background-color: #030712; }

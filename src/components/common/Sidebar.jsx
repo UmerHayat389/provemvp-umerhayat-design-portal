@@ -6,7 +6,6 @@ import { X, Home, Calendar, UserCheck } from 'lucide-react';
 const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
   const location = useLocation();
 
-  // Different links based on user role
   const adminLinks = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: <Home size={20} /> },
     { to: '/admin/attendance', label: 'Attendance', icon: <Calendar size={20} /> },
@@ -19,7 +18,6 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
     { to: '/employee/leave', label: 'My Leave', icon: <UserCheck size={20} /> },
   ];
 
-  // Select links based on user role
   const links = user?.role === 'Admin' ? adminLinks : employeeLinks;
 
   const handleLinkClick = () => setSidebarOpen(false);
@@ -29,13 +27,17 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
       {/* Overlay with fade animation */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-opacity-30 backdrop-blur-sm z-40 md:hidden animate-fadeIn"
+          className="fixed inset-0 bg-black bg-opacity-30 dark:bg-opacity-50 backdrop-blur-sm z-40 md:hidden animate-fadeIn"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl p-4
+        className={`fixed inset-y-0 left-0 z-50 w-64 
+          bg-white dark:bg-gray-900 
+          shadow-xl dark:shadow-gray-950
+          border-r border-gray-100 dark:border-gray-700
+          p-4
           transform transition-transform duration-300 ease-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           md:relative md:translate-x-0 md:shadow-lg`}
@@ -52,13 +54,14 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
                   transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6"
               />
               {/* Subtle glow effect */}
-              <div className="absolute inset-0 rounded-full bg-[#0C2B4E] opacity-0 
+              <div className="absolute inset-0 rounded-full bg-[#0C2B4E] dark:bg-blue-500 opacity-0 
                 group-hover:opacity-20 blur-md transition-opacity duration-300" />
             </div>
 
             {/* Logo text with gradient effect */}
             <span
               className="text-xl font-bold bg-gradient-to-r from-[#0C2B4E] to-[#1a4d7a] 
+                dark:from-blue-400 dark:to-blue-300
                 bg-clip-text text-transparent drop-shadow-sm
                 transition-all duration-300 group-hover:tracking-wide"
               style={{ fontFamily: "'Pacifico', cursive" }}
@@ -70,7 +73,8 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
           {/* Close button with rotation animation */}
           <button
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden text-gray-500 hover:text-[#0C2B4E] 
+            className="md:hidden text-gray-500 dark:text-gray-400 
+              hover:text-[#0C2B4E] dark:hover:text-white
               transition-all duration-300 hover:rotate-90 hover:scale-110"
           >
             <X size={24} />
@@ -79,7 +83,7 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
 
         {/* Navigation */}
         <nav className="space-y-2">
-          {links.map((link, index) => (
+          {links.map((link) => (
             <Link
               key={link.to}
               to={link.to}
@@ -89,15 +93,15 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
                 group relative overflow-hidden
                 ${
                   location.pathname === link.to
-                    ? 'bg-[#0C2B4E] text-white shadow-lg scale-105'
-                    : 'text-[#0C2B4E] hover:bg-gray-50 hover:shadow-md hover:translate-x-1'
+                    ? 'bg-[#0C2B4E] dark:bg-[#0C2B4E] text-white shadow-lg scale-105'
+                    : 'text-[#0C2B4E] dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:shadow-md hover:translate-x-1'
                 }`}
             >
               {/* Background slide effect on hover */}
               <div className={`absolute inset-0 transition-transform duration-300 
                 ${location.pathname === link.to 
                   ? 'bg-[#0C2B4E]' 
-                  : 'bg-gradient-to-r from-[#0C2B4E]/5 to-transparent translate-x-[-100%] group-hover:translate-x-0'
+                  : 'bg-gradient-to-r from-[#0C2B4E]/5 dark:from-[#0C2B4E]/10 to-transparent translate-x-[-100%] group-hover:translate-x-0'
                 }`} 
               />
               
