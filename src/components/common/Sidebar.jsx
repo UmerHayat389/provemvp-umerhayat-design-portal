@@ -27,7 +27,7 @@ const Sidebar = ({ user, sidebarOpen, setSidebarOpen }) => {
       {/* Overlay with fade animation */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-30 dark:bg-opacity-50 backdrop-blur-sm z-40 md:hidden animate-fadeIn"
+          className="fixed inset-0 bg-opacity-30 dark:bg-opacity-50 backdrop-blur-sm z-40 md:hidden animate-fadeIn"
           onClick={() => setSidebarOpen(false)}
         />
       )}
