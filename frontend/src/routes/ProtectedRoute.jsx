@@ -1,21 +1,24 @@
-// src/components/ProtectedRoute.jsx
+// src/routes/ProtectedRoute.jsx
+import React from "react";
 import { Navigate } from "react-router-dom";
 
 const ProtectedRoute = ({ user, allowedRole, children }) => {
-  // Try to get user from localStorage if not passed as prop
-  const savedUser = !user ? JSON.parse(localStorage.getItem("user")) : user;
-
-  // Not logged in - redirect to login
-  if (!savedUser) {
+  // If no user is logged in → go to login
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // Wrong role - redirect based on their actual role
-  if (allowedRole && savedUser.role !== allowedRole) {
-    const redirectPath = savedUser.role === 'Admin' ? '/admin/dashboard' : '/employee/dashboard';
+  // If role does not match → redirect to correct dashboard
+  if (allowedRole && user.role !== allowedRole) {
+    const redirectPath =
+      user.role === "Admin"
+        ? "/admin/dashboard"
+        : "/employee/dashboard";
+
     return <Navigate to={redirectPath} replace />;
   }
 
+  // Authorized → render the page
   return children;
 };
 
