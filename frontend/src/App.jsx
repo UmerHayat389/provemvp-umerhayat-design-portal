@@ -20,29 +20,19 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import { dummyData } from './data/dummyData';
 
 function App() {
-  // ✅ User state
   const [user, setUser] = useState(null);
-
-  // ✅ NEW: loading state to prevent refresh white screen
   const [loadingUser, setLoadingUser] = useState(true);
 
-  // ✅ Load user from localStorage before rendering routes
   useEffect(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) setUser(JSON.parse(savedUser));
     setLoadingUser(false);
   }, []);
 
-  // Attendance & Leave states
   const [attendance, setAttendance] = useState(dummyData.attendance);
   const [leaveRequests, setLeaveRequests] = useState(dummyData.leaveRequests);
-
-  // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Layout wrapper
   const Layout = ({ children }) => (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-950 transition-colors duration-200">
       <Sidebar user={user} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
@@ -55,27 +45,19 @@ function App() {
     </div>
   );
 
-  // ✅ Prevent routes from rendering until user is restored
-  if (loadingUser) {
-    return null;
-  }
+  if (loadingUser) return null;
 
   return (
     <Router>
       <Routes>
 
-        {/* Login Route */}
+        {/* Login */}
         <Route
           path="/login"
           element={
-            user ? (
-              <Navigate
-                to={user.role === 'Admin' ? '/admin/dashboard' : '/employee/dashboard'}
-                replace
-              />
-            ) : (
-              <Login setUser={setUser} />
-            )
+            user
+              ? <Navigate to={user.role === 'Admin' ? '/admin/dashboard' : '/employee/dashboard'} replace />
+              : <Login setUser={setUser} />
           }
         />
 
@@ -83,102 +65,78 @@ function App() {
         <Route
           path="/"
           element={
-            user ? (
-              <Navigate
-                to={user.role === 'Admin' ? '/admin/dashboard' : '/employee/dashboard'}
-                replace
-              />
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            user
+              ? <Navigate to={user.role === 'Admin' ? '/admin/dashboard' : '/employee/dashboard'} replace />
+              : <Navigate to="/login" replace />
           }
         />
 
-        {/* ================= ADMIN ROUTES ================= */}
+        {/* ── ADMIN ROUTES ─────────────────────────────────────────────── */}
 
-        <Route
-          path="/admin/dashboard"
+        <Route path="/admin/dashboard"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
-              <Layout>
-                <AdminDashboard attendance={attendance} leaveRequests={leaveRequests} />
-              </Layout>
+              <Layout><AdminDashboard attendance={attendance} leaveRequests={leaveRequests} /></Layout>
             </ProtectedRoute>
           }
         />
 
-        <Route
-          path="/admin/attendance"
+        {/* Employee list view */}
+        <Route path="/admin/attendance"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
-              <Layout>
-                <AdminAttendance attendance={attendance} setAttendance={setAttendance} />
-              </Layout>
+              <Layout><AdminAttendance /></Layout>
             </ProtectedRoute>
           }
         />
 
-        <Route
-          path="/admin/leave"
+        {/* Individual employee calendar view — URL shows employee name */}
+        <Route path="/admin/attendance/:employeeSlug"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
-              <Layout>
-                <AdminLeave leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} />
-              </Layout>
+              <Layout><AdminAttendance /></Layout>
             </ProtectedRoute>
           }
         />
 
-        <Route
-          path="/admin/manageemployees"
+        <Route path="/admin/leave"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
-              <Layout>
-                <ManageEmployees />
-              </Layout>
+              <Layout><AdminLeave leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} /></Layout>
             </ProtectedRoute>
           }
         />
 
-        {/* ================= EMPLOYEE ROUTES ================= */}
+        <Route path="/admin/manageemployees"
+          element={
+            <ProtectedRoute user={user} allowedRole="Admin">
+              <Layout><ManageEmployees /></Layout>
+            </ProtectedRoute>
+          }
+        />
 
-        <Route
-          path="/employee/dashboard"
+        {/* ── EMPLOYEE ROUTES ───────────────────────────────────────────── */}
+
+        <Route path="/employee/dashboard"
           element={
             <ProtectedRoute user={user} allowedRole="Employee">
-              <Layout>
-                <EmployeeDashboard />
-              </Layout>
+              <Layout><EmployeeDashboard /></Layout>
             </ProtectedRoute>
           }
         />
 
-        <Route
-          path="/employee/attendance"
+        <Route path="/employee/attendance"
           element={
             <ProtectedRoute user={user} allowedRole="Employee">
-              <Layout>
-                <EmployeeAttendance
-                  user={user}
-                  attendance={attendance}
-                  setAttendance={setAttendance}
-                />
-              </Layout>
+              <Layout><EmployeeAttendance user={user} attendance={attendance} setAttendance={setAttendance} /></Layout>
             </ProtectedRoute>
           }
         />
 
-        <Route
-          path="/employee/leave"
+        <Route path="/employee/leave"
           element={
             <ProtectedRoute user={user} allowedRole="Employee">
-              <Layout>
-                <EmployeeLeave
-                  user={user}
-                  leaveRequests={leaveRequests}
-                  setLeaveRequests={setLeaveRequests}
-                />
-              </Layout>
+              <Layout><EmployeeLeave user={user} leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} /></Layout>
             </ProtectedRoute>
           }
         />

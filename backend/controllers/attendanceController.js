@@ -138,3 +138,64 @@ exports.markStatus = async (req, res) => {
     res.status(500).json({ message: "Server error marking attendance.", error: err.message });
   }
 };
+
+// ✅✅✅ ADD THIS NEW FUNCTION AT THE END ✅✅✅
+// POST /attendance/admin-mark-status (ADMIN ONLY)
+// body: { userId: 'employeeId', date: '2024-02-28', status: 'Present' | 'Absent' | 'Leave' }
+exports.adminMarkStatus = async (req, res) => {
+  try {
+    const { userId, date, status } = req.body;
+
+    // Validate inputs
+    if (!userId || !date || !status) {
+      return res.status(400).json({ message: "userId, date, and status are required." });
+    }
+
+    const validStatuses = ["Present", "Absent", "Leave"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid status. Use Present, Absent, or Leave." });
+    }
+
+    // Parse the date
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDay = new Date(targetDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    // Check if record exists for this user on this date
+    let record = await Attendance.findOne({
+      userId,
+      date: { $gte: targetDate, $lt: nextDay }
+    });
+
+    if (record) {
+      // Update existing record
+      record.status = status;
+      if (status === 'Present' && !record.clockIn) {
+        record.clockIn = new Date(targetDate.setHours(9, 0, 0, 0)); // Default 9 AM
+      }
+      await record.save();
+    } else {
+      // Create new record
+      record = await Attendance.create({
+        userId,
+        date: targetDate,
+        status,
+        clockIn: status === 'Present' ? new Date(targetDate.setHours(9, 0, 0, 0)) : null,
+        clockOut: null,
+        totalHours: 0
+      });
+    }
+
+    // Populate user details for response
+    await record.populate('userId', 'name email department position');
+
+    res.json({ 
+      message: `Attendance marked as ${status} for employee.`, 
+      attendance: record 
+    });
+  } catch (err) {
+    console.error("Admin mark status error:", err);
+    res.status(500).json({ message: "Server error marking attendance.", error: err.message });
+  }
+};

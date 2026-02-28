@@ -3,34 +3,26 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor to add token to all requests
+// Attach token to every request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor to handle errors
+// Global 401 handler
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
@@ -39,17 +31,14 @@ api.interceptors.response.use(
   }
 );
 
-// ============ AUTH API ============
+// ── AUTH ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   getMe: () => api.get('/auth/me'),
-
-  // Forgot Password — single step
-  // POST /auth/change-password → body: { email, oldPassword, newPassword }
   changePassword: (data) => api.post('/auth/change-password', data),
 };
 
-// ============ USER API ============
+// ── USERS ─────────────────────────────────────────────────────────────────────
 export const userAPI = {
   getUsers: () => api.get('/users'),
   createUser: (userData) => api.post('/users', userData),
@@ -57,24 +46,36 @@ export const userAPI = {
   deleteUser: (id) => api.delete(`/users/${id}`),
 };
 
-// ============ ATTENDANCE API ============
+// ── ATTENDANCE ────────────────────────────────────────────────────────────────
 export const attendanceAPI = {
   clockIn: () => api.post('/attendance/clock-in'),
   clockOut: () => api.post('/attendance/clock-out'),
+
+  // Employee: fetch own records
   getMyRecords: () => api.get('/attendance/my-records'),
-  getAllRecords: () => api.get('/attendance/all-records'),       // Admin only
-  markStatus: (data) => api.post('/attendance/mark-status', data), // { status: 'Present'|'Absent'|'Leave' }
+
+  // Admin: fetch all records
+  getAllRecords: () => api.get('/attendance/all-records'),
+
+  /**
+   * Admin mark / override attendance for any employee on any date.
+   * Body: { userId: string, date: 'YYYY-MM-DD', status: 'Present'|'Absent'|'Leave' }
+   *
+   * Employee self-mark (today only):
+   * Body: { status: 'Present'|'Absent'|'Leave' }
+   */
+  markStatus: (data) => api.post('/attendance/mark-status', data),
 };
 
-// ============ LEAVE API ============
+// ── LEAVES ────────────────────────────────────────────────────────────────────
 export const leaveAPI = {
   applyLeave: (leaveData) => api.post('/leaves', leaveData),
-  getLeaves: () => api.get('/leaves'),
-  updateLeaveStatus: (id, status) => api.put(`/leaves/${id}/status`, { status }),
-  getMyLeaves: () => api.get('/leaves/my-leaves'),
+  getLeaves: () => api.get('/leaves'),                                 // Admin: all
+  getMyLeaves: () => api.get('/leaves/my-leaves'),                     // Employee: own
+  updateLeaveStatus: (id, status) => api.put(`/leaves/${id}/status`, { status }), // Admin: approve/reject
 };
 
-// ============ DASHBOARD API ============
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
 export const dashboardAPI = {
   getAdminStats: () => api.get('/dashboard/admin'),
   getEmployeeStats: () => api.get('/dashboard/employee'),

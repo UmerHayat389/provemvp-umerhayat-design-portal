@@ -4,7 +4,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import {
   FaPlus, FaTimes, FaEdit, FaTrash, FaSearch,
-  FaUser, FaEnvelope, FaPhone, FaBriefcase, FaDollarSign
+  FaUser, FaEnvelope, FaPhone, FaBriefcase, FaDollarSign, FaEye, FaEyeSlash
 } from 'react-icons/fa';
 import { userAPI } from '../../services/api';
 
@@ -33,6 +33,7 @@ const ManageEmployees = () => {
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     name: '', email: '', password: '', department: '',
     position: 'Employee', salary: '', phone: '', address: '',
@@ -69,7 +70,31 @@ const ManageEmployees = () => {
     const errors = {};
     if (!formData.name.trim())     errors.name = 'Name is required';
     if (!formData.email.trim())    errors.email = 'Email is required';
-    if (!editingEmployee && !formData.password) errors.password = 'Password is required';
+    
+    // Password validation - show ALL errors at once
+    if (!editingEmployee || formData.password) {
+      const password = formData.password;
+      const passwordErrors = [];
+      
+      if (!password) {
+        errors.password = ['Password is required'];
+      } else {
+        if (password.length < 6) {
+          passwordErrors.push('At least 6 characters');
+        }
+        if (!/[A-Z]/.test(password)) {
+          passwordErrors.push('At least 1 uppercase letter');
+        }
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+          passwordErrors.push('At least 1 special character');
+        }
+        
+        if (passwordErrors.length > 0) {
+          errors.password = passwordErrors;
+        }
+      }
+    }
+    
     if (!formData.department)      errors.department = 'Department is required';
     if (!formData.position)        errors.position = 'Position is required';
     return errors;
@@ -106,6 +131,7 @@ const ManageEmployees = () => {
     });
     setFormErrors({});
     setSubmitError('');
+    setShowPassword(false);
     setIsModalOpen(true);
   };
 
@@ -129,6 +155,7 @@ const ManageEmployees = () => {
     });
     setFormErrors({});
     setSubmitError('');
+    setShowPassword(false);
     setIsModalOpen(true);
   };
 
@@ -137,6 +164,7 @@ const ManageEmployees = () => {
     setEditingEmployee(null);
     setFormErrors({});
     setSubmitError('');
+    setShowPassword(false);
   };
 
   const filteredEmployees = employees.filter(emp =>
@@ -350,7 +378,6 @@ const ManageEmployees = () => {
 
                   {/* Modal Header */}
                   <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#162030]">
-                    {/* Drag handle on mobile */}
                     <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 sm:hidden" />
                     <Dialog.Title className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 mt-2 sm:mt-0">
                       {editingEmployee ? '✏️ Edit Employee' : '➕ Add New Employee'}
@@ -389,15 +416,42 @@ const ManageEmployees = () => {
                         {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>}
                       </div>
 
-                      {/* Password */}
+                      {/* Password with Show/Hide toggle */}
                       {!editingEmployee && (
                         <div>
                           <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                             Password *
                           </label>
-                          <input type="password" name="password" value={formData.password} onChange={handleInputChange}
-                            className={inputClass(formErrors.password)} placeholder="••••••••" />
-                          {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
+                          <div className="relative">
+                            <input 
+                              type={showPassword ? "text" : "password"} 
+                              name="password" 
+                              value={formData.password} 
+                              onChange={handleInputChange}
+                              className={inputClass(formErrors.password) + ' pr-10'} 
+                              placeholder="••••••••" 
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                            >
+                              {showPassword ? <FaEyeSlash className="w-4 h-4" /> : <FaEye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                          {formErrors.password && (
+                            <div className="mt-1 space-y-0.5">
+                              {Array.isArray(formErrors.password) ? (
+                                formErrors.password.map((err, idx) => (
+                                  <p key={idx} className="text-red-500 text-xs flex items-center gap-1">
+                                    <span className="text-red-500">•</span> {err}
+                                  </p>
+                                ))
+                              ) : (
+                                <p className="text-red-500 text-xs">{formErrors.password}</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -495,7 +549,6 @@ const ManageEmployees = () => {
         </Dialog>
       </Transition>
 
-      {/* Fix native select option hover color via global style */}
       <style>{`
         select option:hover,
         select option:focus,
