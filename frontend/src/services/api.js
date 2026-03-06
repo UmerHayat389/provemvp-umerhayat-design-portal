@@ -8,7 +8,6 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach token to every request
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -18,7 +17,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Global 401 handler
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -31,54 +29,50 @@ api.interceptors.response.use(
   }
 );
 
-// ── AUTH ──────────────────────────────────────────────────────────────────────
 export const authAPI = {
-  login: (credentials) => api.post('/auth/login', credentials),
-  getMe: () => api.get('/auth/me'),
-  changePassword: (data) => api.post('/auth/change-password', data),
+  login:          (credentials) => api.post('/auth/login', credentials),
+  getMe:          ()            => api.get('/auth/me'),
+  changePassword: (data)        => api.post('/auth/change-password', data),
 };
 
-// ── USERS ─────────────────────────────────────────────────────────────────────
 export const userAPI = {
-  getUsers: () => api.get('/users'),
-  createUser: (userData) => api.post('/users', userData),
-  updateUser: (id, userData) => api.put(`/users/${id}`, userData),
-  deleteUser: (id) => api.delete(`/users/${id}`),
+  getUsers:   ()              => api.get('/users'),
+  createUser: (userData)      => api.post('/users', userData),
+  updateUser: (id, userData)  => api.put(`/users/${id}`, userData),
+  deleteUser: (id)            => api.delete(`/users/${id}`),
 };
 
-// ── ATTENDANCE ────────────────────────────────────────────────────────────────
 export const attendanceAPI = {
-  clockIn: () => api.post('/attendance/clock-in'),
-  clockOut: () => api.post('/attendance/clock-out'),
-
-  // Employee: fetch own records
-  getMyRecords: () => api.get('/attendance/my-records'),
-
-  // Admin: fetch all records
-  getAllRecords: () => api.get('/attendance/all-records'),
-
-  /**
-   * Admin mark / override attendance for any employee on any date.
-   * Body: { userId: string, date: 'YYYY-MM-DD', status: 'Present'|'Absent'|'Leave' }
-   *
-   * Employee self-mark (today only):
-   * Body: { status: 'Present'|'Absent'|'Leave' }
-   */
-  markStatus: (data) => api.post('/attendance/mark-status', data),
+  clockIn:         ()     => api.post('/attendance/clock-in'),
+  clockOut:        ()     => api.post('/attendance/clock-out'),
+  getMyRecords:    ()     => api.get('/attendance/my-records'),
+  getAllRecords:    ()     => api.get('/attendance/all-records'),
+  markStatus:      (data) => api.post('/attendance/mark-status', data),
+  adminMarkStatus: (data) => api.post('/attendance/admin-mark-status', data),
 };
 
-// ── LEAVES ────────────────────────────────────────────────────────────────────
 export const leaveAPI = {
-  applyLeave: (leaveData) => api.post('/leaves', leaveData),
-  getLeaves: () => api.get('/leaves'),                                 // Admin: all
-  getMyLeaves: () => api.get('/leaves/my-leaves'),                     // Employee: own
-  updateLeaveStatus: (id, status) => api.put(`/leaves/${id}/status`, { status }), // Admin: approve/reject
+  applyLeave:        (leaveData)  => api.post('/leaves', leaveData),
+  getLeaves:         ()           => api.get('/leaves'),
+  getMyLeaves:       ()           => api.get('/leaves/my-leaves'),
+  updateLeaveStatus: (id, status) => api.put(`/leaves/${id}/status`, { status }),
 };
 
-// ── DASHBOARD ─────────────────────────────────────────────────────────────────
 export const dashboardAPI = {
-  getAdminStats: () => api.get('/dashboard/admin'),
+  getAdminStats:    () => api.get('/dashboard/admin'),
   getEmployeeStats: () => api.get('/dashboard/employee'),
+};
+
+// NEW - Project API
+export const projectAPI = {
+  getAllProjects:       ()           => api.get('/projects'),
+  getProjectStats:     ()           => api.get('/projects/stats'),
+  getEmployeeProjects: (employeeId) => api.get(`/projects/employee/${employeeId}`),
+  createProject:       (data)       => api.post('/projects', data),
+  updateProject:       (id, data)   => api.put(`/projects/${id}`, data),
+  deleteProject:       (id)         => api.delete(`/projects/${id}`),
+  getMyProjects:       ()           => api.get('/projects/my-projects'),
+  getMyProjectStats:   ()           => api.get('/projects/my-stats'),
 };
 
 export default api;

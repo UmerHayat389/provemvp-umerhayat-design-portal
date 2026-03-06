@@ -1,152 +1,293 @@
 // src/components/common/Calendar.jsx
 import React from 'react';
+import { useTheme } from '../../context/ThemeContext';
+import { FiCheckCircle, FiXCircle, FiMinusCircle } from 'react-icons/fi';
 
-const Calendar = ({ month, year, attendanceData, onDateClick }) => {
+const Calendar = ({ month, year, onDateClick, attendanceData }) => {
+  const { isDark } = useTheme();
+
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = new Date(year, month, 1).getDay();
-  
-  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const weeks = [];
-  let days = [];
 
-  // Empty cells before first day
-  for (let i = 0; i < firstDayOfMonth; i++) {
-    days.push(null);
-  }
+  const padZ = (n) => String(n).padStart(2, '0');
 
-  // Days of the month
-  for (let day = 1; day <= daysInMonth; day++) {
-    days.push(day);
-    if (days.length === 7) {
-      weeks.push(days);
-      days = [];
-    }
-  }
-
-  // Add remaining days to last week
-  if (days.length > 0) {
-    while (days.length < 7) {
-      days.push(null);
-    }
-    weeks.push(days);
-  }
-
-  const getAttendanceStatus = (day) => {
-    if (!day) return null;
-    const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return attendanceData[dateKey]?.status;
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'Present':
-        return 'bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-300 dark:border-green-700';
-      case 'Absent':
-        return 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700';
-      case 'Leave':
-        return 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700';
-      default:
-        return 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600';
+  const handleDayClick = (day) => {
+    const dateKey = `${year}-${padZ(month + 1)}-${padZ(day)}`;
+    if (onDateClick) {
+      onDateClick(dateKey);
     }
   };
 
-  const isToday = (day) => {
-    const today = new Date();
-    return (
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear()
-    );
+  const renderDays = () => {
+    const days = [];
+    
+    // Empty cells for days before month starts
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(
+        <div 
+          key={`empty-${i}`} 
+          style={{
+            minHeight: '90px',
+            borderRadius: '12px',
+            opacity: 0.3,
+          }}
+        />
+      );
+    }
+
+    // Days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateKey = `${year}-${padZ(month + 1)}-${padZ(day)}`;
+      const dayData = attendanceData[dateKey];
+      const dayOfWeek = new Date(year, month, day).getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isToday = new Date().getDate() === day && 
+                      new Date().getMonth() === month && 
+                      new Date().getFullYear() === year;
+
+      // Status colors with better contrast
+      const getStatusStyle = () => {
+        if (!dayData) {
+          return {
+            bg: isWeekend 
+              ? (isDark ? '#1a1f2e' : '#f8fafc')
+              : (isDark ? '#0f1419' : '#ffffff'),
+            border: isWeekend
+              ? (isDark ? '#2d3748' : '#e2e8f0')
+              : (isDark ? '#1e293b' : '#e5e7eb'),
+            textColor: isDark ? '#64748b' : '#94a3b8',
+          };
+        }
+        
+        const styles = {
+          Present: {
+            bg: isDark ? 'rgba(34, 197, 94, 0.12)' : 'rgba(34, 197, 94, 0.08)',
+            border: isDark ? '#15803d' : '#86efac',
+            textColor: isDark ? '#4ade80' : '#15803d',
+            icon: <FiCheckCircle size={16} />,
+          },
+          Absent: {
+            bg: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+            border: isDark ? '#b91c1c' : '#fca5a5',
+            textColor: isDark ? '#f87171' : '#b91c1c',
+            icon: <FiXCircle size={16} />,
+          },
+          Leave: {
+            bg: isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+            border: isDark ? '#b45309' : '#fcd34d',
+            textColor: isDark ? '#fbbf24' : '#b45309',
+            icon: <FiMinusCircle size={16} />,
+          },
+        };
+        
+        return styles[dayData.status] || styles.Absent;
+      };
+
+      const statusStyle = getStatusStyle();
+      const hasData = !!dayData;
+
+      days.push(
+        <div
+          key={day}
+          onClick={() => handleDayClick(day)}
+          style={{
+            padding: '14px',
+            borderRadius: '12px',
+            backgroundColor: statusStyle.bg,
+            border: `2px solid ${isToday ? '#60a5fa' : statusStyle.border}`,
+            cursor: hasData ? 'pointer' : 'default',
+            transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            minHeight: '90px',
+            position: 'relative',
+            opacity: hasData ? 1 : (isWeekend ? 0.6 : 0.8),
+            boxShadow: isToday 
+              ? '0 0 0 3px rgba(96, 165, 250, 0.2)' 
+              : 'none',
+          }}
+          onMouseEnter={(e) => {
+            if (hasData) {
+              e.currentTarget.style.transform = 'translateY(-4px) scale(1.02)';
+              e.currentTarget.style.boxShadow = isDark 
+                ? '0 8px 20px rgba(0,0,0,0.4)' 
+                : '0 8px 20px rgba(0,0,0,0.15)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.boxShadow = isToday 
+              ? '0 0 0 3px rgba(96, 165, 250, 0.2)' 
+              : 'none';
+          }}
+        >
+          {/* Day number */}
+          <div style={{ 
+            fontSize: '22px',
+            fontWeight: '800',
+            color: isToday 
+              ? '#60a5fa' 
+              : (hasData ? statusStyle.textColor : (isDark ? '#94a3b8' : '#64748b')),
+            fontFamily: "'DM Sans', sans-serif",
+            letterSpacing: '-0.02em',
+          }}>
+            {day}
+          </div>
+          
+          {/* Status indicator */}
+          {hasData && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '6px',
+              marginTop: '8px',
+            }}>
+              <div style={{
+                color: statusStyle.textColor,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                {statusStyle.icon}
+              </div>
+              {dayData.totalHours && (
+                <div style={{
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: statusStyle.textColor,
+                  opacity: 0.85,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>
+                  {parseFloat(dayData.totalHours).toFixed(1)}h
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Admin badge */}
+          {dayData?.markedByAdmin && (
+            <div style={{
+              position: 'absolute',
+              top: '6px',
+              right: '6px',
+              fontSize: '12px',
+              filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))',
+            }}>
+              🛡️
+            </div>
+          )}
+
+          {/* Today indicator dot */}
+          {isToday && (
+            <div style={{
+              position: 'absolute',
+              bottom: '8px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: '#60a5fa',
+              boxShadow: '0 0 8px rgba(96, 165, 250, 0.6)',
+            }} />
+          )}
+        </div>
+      );
+    }
+
+    return days;
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-6 border border-gray-100 dark:border-gray-700 transition-colors duration-200">
-      {/* Calendar Header - Days of Week */}
-      <div className="grid grid-cols-7 gap-2 mb-3">
-        {daysOfWeek.map((day) => (
-          <div
-            key={day}
-            className="text-center text-sm font-semibold text-gray-600 dark:text-gray-300 py-2"
-          >
+    <div style={{
+      backgroundColor: isDark ? '#0f1419' : '#ffffff',
+      padding: '28px',
+      borderRadius: '16px',
+      border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0',
+      boxShadow: isDark 
+        ? '0 4px 16px rgba(0,0,0,0.4)' 
+        : '0 2px 8px rgba(0,0,0,0.08)',
+    }}>
+      {/* Month/Year header */}
+      <div style={{
+        marginBottom: '24px',
+        textAlign: 'center',
+      }}>
+        <h2 style={{
+          fontSize: '24px',
+          fontWeight: '800',
+          color: isDark ? '#e5e7eb' : '#0f172a',
+          margin: 0,
+          fontFamily: "'DM Sans', sans-serif",
+          letterSpacing: '-0.02em',
+        }}>
+          {new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </h2>
+      </div>
+
+      {/* Legend */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        gap: '20px',
+        marginBottom: '20px',
+        flexWrap: 'wrap',
+      }}>
+        {[
+          { label: 'Present', color: isDark ? '#4ade80' : '#15803d', icon: <FiCheckCircle size={12} /> },
+          { label: 'Absent', color: isDark ? '#f87171' : '#b91c1c', icon: <FiXCircle size={12} /> },
+          { label: 'Leave', color: isDark ? '#fbbf24' : '#b45309', icon: <FiMinusCircle size={12} /> },
+        ].map(({ label, color, icon }) => (
+          <div key={label} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '12px',
+            fontWeight: '600',
+            color: isDark ? '#94a3b8' : '#64748b',
+            fontFamily: "'DM Sans', sans-serif",
+          }}>
+            <div style={{ color }}>{icon}</div>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Day headers */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(7, 1fr)',
+        gap: '10px',
+        marginBottom: '16px',
+      }}>
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
+          <div key={day} style={{
+            textAlign: 'center',
+            fontWeight: '700',
+            fontSize: '13px',
+            color: (idx === 0 || idx === 6) 
+              ? (isDark ? '#64748b' : '#94a3b8')
+              : (isDark ? '#94a3b8' : '#475569'),
+            padding: '10px 0',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            fontFamily: "'DM Sans', sans-serif",
+          }}>
             {day}
           </div>
         ))}
       </div>
 
-      {/* Calendar Grid */}
-      <div className="space-y-2">
-        {weeks.map((week, weekIndex) => (
-          <div key={weekIndex} className="grid grid-cols-7 gap-2">
-            {week.map((day, dayIndex) => {
-              const status = getAttendanceStatus(day);
-              const statusColor = getStatusColor(status);
-              const today = isToday(day);
-
-              return (
-                <div
-                  key={dayIndex}
-                  onClick={() => day && onDateClick && onDateClick(day)}
-                  className={`
-                    min-h-[60px] sm:min-h-[70px] rounded-lg border-2 p-2 flex flex-col items-center justify-center
-                    transition-all duration-200
-                    ${day ? 'cursor-pointer hover:shadow-md hover:scale-105' : 'cursor-default'}
-                    ${today ? 'ring-2 ring-blue-500 dark:ring-blue-400 ring-offset-2 dark:ring-offset-gray-800' : ''}
-                    ${statusColor}
-                  `}
-                  style={{
-                    transition: 'all 200ms ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (day) {
-                      e.currentTarget.style.transform = 'scale(1.05)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (day) {
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }
-                  }}
-                >
-                  {day && (
-                    <>
-                      <span className="text-lg font-bold mb-1">{day}</span>
-                      {status && (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/30 dark:bg-black/20">
-                          {status === 'Present' ? '✓' : status === 'Absent' ? '✗' : '○'}
-                        </span>
-                      )}
-                      {today && !status && (
-                        <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">Today</span>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-
-      {/* Legend */}
-      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex flex-wrap gap-4 justify-center text-xs sm:text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-green-100 dark:bg-green-900/40 border-2 border-green-300 dark:border-green-700"></div>
-            <span className="text-gray-700 dark:text-gray-300 font-medium">Present</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-red-100 dark:bg-red-900/40 border-2 border-red-300 dark:border-red-700"></div>
-            <span className="text-gray-700 dark:text-gray-300 font-medium">Absent</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-yellow-100 dark:bg-yellow-900/40 border-2 border-yellow-300 dark:border-yellow-700"></div>
-            <span className="text-gray-700 dark:text-gray-300 font-medium">Leave</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-white dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600"></div>
-            <span className="text-gray-700 dark:text-gray-300 font-medium">No Data</span>
-          </div>
-        </div>
+      {/* Calendar grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(7, 1fr)',
+        gap: '10px',
+      }}>
+        {renderDays()}
       </div>
     </div>
   );

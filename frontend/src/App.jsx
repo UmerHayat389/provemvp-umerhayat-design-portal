@@ -2,26 +2,28 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-// Pages & Components
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AdminAttendance from './components/admin/AdminAttendance';
 import AdminLeave from './components/admin/AdminLeave';
 import ManageEmployees from './components/admin/Manageemployees';
+import AdminProjects from './components/admin/AdminProjects';           // ✅ NEW
 import EmployeeDashboard from './components/employee/EmployeeDashboard';
 import EmployeeAttendance from './components/employee/EmployeeAttendance';
 import EmployeeLeave from './components/employee/EmployeeLeave';
+import EmployeeProjects from './components/employee/EmployeeProjects';  // ✅ NEW
 import Sidebar from './components/common/Sidebar';
 import Navbar from './components/common/Navbar';
 import ProtectedRoute from './routes/ProtectedRoute';
-
-// Dummy data
-import { dummyData } from './data/dummyData';
+import socketService from './services/socketService';                   // ✅ NEW
 
 function App() {
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [attendance, setAttendance] = useState([]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
@@ -29,9 +31,16 @@ function App() {
     setLoadingUser(false);
   }, []);
 
-  const [attendance, setAttendance] = useState(dummyData.attendance);
-  const [leaveRequests, setLeaveRequests] = useState(dummyData.leaveRequests);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // ✅ NEW: Connect socket when user logs in, disconnect on logout
+  useEffect(() => {
+    if (user) {
+      socketService.connect();
+      socketService.joinRoom(user._id);
+    } else {
+      socketService.disconnect();
+    }
+    return () => socketService.disconnect();
+  }, [user]);
 
   const Layout = ({ children }) => (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-950 transition-colors duration-200">
@@ -51,7 +60,6 @@ function App() {
     <Router>
       <Routes>
 
-        {/* Login */}
         <Route
           path="/login"
           element={
@@ -61,7 +69,6 @@ function App() {
           }
         />
 
-        {/* Root redirect */}
         <Route
           path="/"
           element={
@@ -71,8 +78,7 @@ function App() {
           }
         />
 
-        {/* ── ADMIN ROUTES ─────────────────────────────────────────────── */}
-
+        {/* ── ADMIN ROUTES ── */}
         <Route path="/admin/dashboard"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
@@ -80,8 +86,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* Employee list view */}
         <Route path="/admin/attendance"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
@@ -89,8 +93,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* Individual employee calendar view — URL shows employee name */}
         <Route path="/admin/attendance/:employeeSlug"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
@@ -98,7 +100,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route path="/admin/leave"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
@@ -106,7 +107,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route path="/admin/manageemployees"
           element={
             <ProtectedRoute user={user} allowedRole="Admin">
@@ -114,9 +114,16 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* ✅ NEW */}
+        <Route path="/admin/projects"
+          element={
+            <ProtectedRoute user={user} allowedRole="Admin">
+              <Layout><AdminProjects /></Layout>
+            </ProtectedRoute>
+          }
+        />
 
-        {/* ── EMPLOYEE ROUTES ───────────────────────────────────────────── */}
-
+        {/* ── EMPLOYEE ROUTES ── */}
         <Route path="/employee/dashboard"
           element={
             <ProtectedRoute user={user} allowedRole="Employee">
@@ -124,7 +131,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route path="/employee/attendance"
           element={
             <ProtectedRoute user={user} allowedRole="Employee">
@@ -132,7 +138,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route path="/employee/leave"
           element={
             <ProtectedRoute user={user} allowedRole="Employee">
@@ -140,8 +145,15 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* ✅ NEW */}
+        <Route path="/employee/projects"
+          element={
+            <ProtectedRoute user={user} allowedRole="Employee">
+              <Layout><EmployeeProjects user={user} /></Layout>
+            </ProtectedRoute>
+          }
+        />
 
-        {/* 404 */}
         <Route path="*" element={<NotFound user={user} />} />
 
       </Routes>

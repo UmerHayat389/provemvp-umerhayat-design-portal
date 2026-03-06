@@ -35,9 +35,16 @@ const ManageEmployees = () => {
   const [submitError, setSubmitError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
-    name: '', email: '', password: '', department: '',
-    position: 'Employee', salary: '', phone: '', address: '',
-    hireDate: new Date().toISOString().split('T')[0]
+    name:       '',
+    email:      '',
+    password:   '',
+    department: '',
+    position:   'Employee',
+    salary:     '',
+    phone:      '',
+    address:    '',
+    hireDate:   new Date().toISOString().split('T')[0],
+    shiftType:  'day',            // ← NEW: default to day shift
   });
   const [formErrors, setFormErrors] = useState({});
 
@@ -61,42 +68,98 @@ const ManageEmployees = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    // ── Name: enforce max 15 characters while typing ──
+    if (name === 'name' && value.length > 15) return;
+
+    // ── Phone: allow only digits, +, -, spaces, parentheses; max 15 chars ──
+    if (name === 'phone') {
+      if (value !== '' && !/^[0-9+\-\s()]*$/.test(value)) return;
+      if (value.length > 15) return;
+    }
+
+    // ── Address: max 100 characters ──
+    if (name === 'address' && value.length > 100) return;
+
+    // ── Salary: prevent negative values from being typed ──
+    if (name === 'salary' && value !== '' && Number(value) < 0) return;
+
     setFormData(prev => ({ ...prev, [name]: value }));
     if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
     if (submitError) setSubmitError('');
   };
 
+  /* ══════════════════════════════════════════════════════════════
+     VALIDATION
+  ══════════════════════════════════════════════════════════════ */
   const validateForm = () => {
     const errors = {};
-    if (!formData.name.trim())     errors.name = 'Name is required';
-    if (!formData.email.trim())    errors.email = 'Email is required';
-    
-    // Password validation - show ALL errors at once
+
+    // ── Name ──
+    const name = formData.name.trim();
+    if (!name) {
+      errors.name = 'Name is required';
+    } else if (name.length > 15) {
+      errors.name = 'Name must be 15 characters or fewer';
+    } else if (!/^[a-zA-Z\s'-]+$/.test(name)) {
+      errors.name = 'Name can only contain letters, spaces, hyphens, and apostrophes';
+    }
+
+    // ── Email ──
+    const email = formData.email.trim();
+    if (!email) {
+      errors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      errors.email = 'Enter a valid email address (e.g. john@company.com)';
+    }
+
+    // ── Password (required on create; optional on edit) ──
     if (!editingEmployee || formData.password) {
       const password = formData.password;
-      const passwordErrors = [];
-      
       if (!password) {
         errors.password = ['Password is required'];
       } else {
-        if (password.length < 6) {
+        const passwordErrors = [];
+        if (password.length < 6)
           passwordErrors.push('At least 6 characters');
-        }
-        if (!/[A-Z]/.test(password)) {
+        if (!/[A-Z]/.test(password))
           passwordErrors.push('At least 1 uppercase letter');
-        }
-        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password))
           passwordErrors.push('At least 1 special character');
-        }
-        
-        if (passwordErrors.length > 0) {
-          errors.password = passwordErrors;
-        }
+        if (passwordErrors.length > 0) errors.password = passwordErrors;
       }
     }
-    
-    if (!formData.department)      errors.department = 'Department is required';
-    if (!formData.position)        errors.position = 'Position is required';
+
+    // ── Department ──
+    if (!formData.department)
+      errors.department = 'Department is required';
+
+    // ── Position ──
+    if (!formData.position)
+      errors.position = 'Position is required';
+
+    // ── Shift Type ──
+    if (!formData.shiftType)
+      errors.shiftType = 'Shift type is required';
+
+    // ── Salary: must be a positive number if provided ──
+    if (formData.salary !== '' && formData.salary !== undefined) {
+      const sal = Number(formData.salary);
+      if (isNaN(sal) || sal <= 0) {
+        errors.salary = 'Salary must be a number greater than 0';
+      }
+    }
+
+    // ── Phone: if provided, must be valid ──
+    if (formData.phone && formData.phone.trim() !== '') {
+      const digits = formData.phone.replace(/[^0-9]/g, '');
+      if (digits.length < 7) {
+        errors.phone = 'Phone number must have at least 7 digits';
+      } else if (digits.length > 15) {
+        errors.phone = 'Phone number must have at most 15 digits';
+      }
+    }
+
     return errors;
   };
 
@@ -110,7 +173,7 @@ const ManageEmployees = () => {
       if (editingEmployee && !submitData.password) delete submitData.password;
 
       if (editingEmployee) await userAPI.updateUser(editingEmployee._id, submitData);
-      else await userAPI.createUser(submitData);
+      else                 await userAPI.createUser(submitData);
 
       await fetchEmployees();
       closeModal();
@@ -123,11 +186,18 @@ const ManageEmployees = () => {
   const handleEdit = (employee) => {
     setEditingEmployee(employee);
     setFormData({
-      name: employee.name || '', email: employee.email || '', password: '',
-      department: employee.department || '', position: employee.position || 'Employee',
-      salary: employee.salary || '', phone: employee.phone || '',
-      address: employee.address || '',
-      hireDate: employee.hireDate ? new Date(employee.hireDate).toISOString().split('T')[0] : ''
+      name:       employee.name       || '',
+      email:      employee.email      || '',
+      password:   '',
+      department: employee.department || '',
+      position:   employee.position   || 'Employee',
+      salary:     employee.salary     || '',
+      phone:      employee.phone      || '',
+      address:    employee.address    || '',
+      hireDate:   employee.hireDate
+                    ? new Date(employee.hireDate).toISOString().split('T')[0]
+                    : '',
+      shiftType:  employee.shiftType  || 'day',   // ← NEW
     });
     setFormErrors({});
     setSubmitError('');
@@ -149,9 +219,16 @@ const ManageEmployees = () => {
   const openAddModal = () => {
     setEditingEmployee(null);
     setFormData({
-      name: '', email: '', password: '', department: '',
-      position: 'Employee', salary: '', phone: '', address: '',
-      hireDate: new Date().toISOString().split('T')[0]
+      name:       '',
+      email:      '',
+      password:   '',
+      department: '',
+      position:   'Employee',
+      salary:     '',
+      phone:      '',
+      address:    '',
+      hireDate:   new Date().toISOString().split('T')[0],
+      shiftType:  'day',          // ← NEW
     });
     setFormErrors({});
     setSubmitError('');
@@ -231,7 +308,7 @@ const ManageEmployees = () => {
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  {['Employee', 'Department', 'Position', 'Salary', 'Actions'].map(col => (
+                  {['Employee', 'Department', 'Position', 'Shift', 'Salary', 'Actions'].map(col => (
                     <th key={col} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       {col}
                     </th>
@@ -263,6 +340,16 @@ const ManageEmployees = () => {
                           {employee.position || employee.role || '—'}
                         </span>
                       </td>
+                      {/* ── Shift column ── */}
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                          employee.shiftType === 'night'
+                            ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+                            : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                        }`}>
+                          {employee.shiftType === 'night' ? '🌙 Night' : '☀️ Day'}
+                        </span>
+                      </td>
                       <td className="px-5 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
                         ${employee.salary?.toLocaleString() || '0'}
                       </td>
@@ -280,7 +367,7 @@ const ManageEmployees = () => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="5" className="px-6 py-14 text-center">
+                    <td colSpan="6" className="px-6 py-14 text-center">
                       <FaUser className="mx-auto w-8 h-8 mb-3 text-gray-300 dark:text-gray-600" />
                       <p className="text-base font-semibold text-gray-500 dark:text-gray-400">
                         {searchTerm ? 'No employees match your search' : 'No employees found'}
@@ -329,6 +416,14 @@ const ManageEmployees = () => {
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
                     }`}>
                       {employee.position || employee.role || '—'}
+                    </span>
+                    {/* Shift badge on mobile */}
+                    <span className={`px-2 py-1 rounded-md font-medium ${
+                      employee.shiftType === 'night'
+                        ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+                        : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                    }`}>
+                      {employee.shiftType === 'night' ? '🌙 Night' : '☀️ Day'}
                     </span>
                     <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-md">
                       ${employee.salary?.toLocaleString() || '0'}
@@ -398,10 +493,26 @@ const ManageEmployees = () => {
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           <FaUser className="inline mr-1.5" />Full Name *
+                          <span className="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500">(max 15 chars)</span>
                         </label>
-                        <input type="text" name="name" value={formData.name} onChange={handleInputChange}
-                          className={inputClass(formErrors.name)} placeholder="Enter Name" />
-                        {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name}</p>}
+                        <input
+                          type="text"
+                          name="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          maxLength={15}
+                          className={inputClass(formErrors.name)}
+                          placeholder="Enter Name"
+                        />
+                        <div className="flex justify-between items-center mt-0.5">
+                          {formErrors.name
+                            ? <p className="text-red-500 text-xs">{formErrors.name}</p>
+                            : <span />
+                          }
+                          <p className={`text-xs ml-auto ${formData.name.length >= 13 ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                            {formData.name.length}
+                          </p>
+                        </div>
                       </div>
 
                       {/* Email */}
@@ -409,27 +520,32 @@ const ManageEmployees = () => {
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           <FaEnvelope className="inline mr-1.5" />Email *
                         </label>
-                        <input type="email" name="email" value={formData.email} onChange={handleInputChange}
+                        <input
+                          type="email"
+                          name="email"
+                          value={formData.email}
+                          onChange={handleInputChange}
                           disabled={!!editingEmployee}
                           className={inputClass(formErrors.email) + (editingEmployee ? ' opacity-50 cursor-not-allowed' : '')}
-                          placeholder="email@example.com" />
+                          placeholder="email@example.com"
+                        />
                         {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>}
                       </div>
 
-                      {/* Password with Show/Hide toggle */}
+                      {/* Password */}
                       {!editingEmployee && (
                         <div>
                           <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                             Password *
                           </label>
                           <div className="relative">
-                            <input 
-                              type={showPassword ? "text" : "password"} 
-                              name="password" 
-                              value={formData.password} 
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              name="password"
+                              value={formData.password}
                               onChange={handleInputChange}
-                              className={inputClass(formErrors.password) + ' pr-10'} 
-                              placeholder="••••••••" 
+                              className={inputClass(formErrors.password) + ' pr-10'}
+                              placeholder="••••••••"
                             />
                             <button
                               type="button"
@@ -460,9 +576,13 @@ const ManageEmployees = () => {
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           <FaBriefcase className="inline mr-1.5" />Position *
                         </label>
-                        <select name="position" value={formData.position} onChange={handleInputChange}
+                        <select
+                          name="position"
+                          value={formData.position}
+                          onChange={handleInputChange}
                           className={inputClass(formErrors.position)}
-                          style={{ colorScheme: 'dark' }}>
+                          style={{ colorScheme: 'dark' }}
+                        >
                           <option value="" disabled>Select position...</option>
                           {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
@@ -474,22 +594,53 @@ const ManageEmployees = () => {
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           Department *
                         </label>
-                        <select name="department" value={formData.department} onChange={handleInputChange}
+                        <select
+                          name="department"
+                          value={formData.department}
+                          onChange={handleInputChange}
                           className={inputClass(formErrors.department)}
-                          style={{ colorScheme: 'dark' }}>
+                          style={{ colorScheme: 'dark' }}
+                        >
                           <option value="" disabled>Select department...</option>
                           {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
                         {formErrors.department && <p className="text-red-500 text-xs mt-1">{formErrors.department}</p>}
                       </div>
 
+                      {/* ── Shift Type — NEW FIELD ── */}
+                      <div>
+                        <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
+                          Shift Type *
+                        </label>
+                        <select
+                          name="shiftType"
+                          value={formData.shiftType}
+                          onChange={handleInputChange}
+                          className={inputClass(formErrors.shiftType)}
+                          style={{ colorScheme: 'dark' }}
+                        >
+                          <option value="day">☀️ Day Shift (08:00 AM – 05:00 PM PKT)</option>
+                          <option value="night">🌙 Night Shift (08:00 PM – 05:00 AM PKT)</option>
+                        </select>
+                        {formErrors.shiftType && <p className="text-red-500 text-xs mt-1">{formErrors.shiftType}</p>}
+                      </div>
+
                       {/* Salary */}
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           <FaDollarSign className="inline mr-1.5" />Salary
+                          <span className="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500"></span>
                         </label>
-                        <input type="number" name="salary" value={formData.salary} onChange={handleInputChange}
-                          className={inputClass(false)} placeholder="50000" />
+                        <input
+                          type="number"
+                          name="salary"
+                          value={formData.salary}
+                          onChange={handleInputChange}
+                          min="1"
+                          className={inputClass(formErrors.salary)}
+                          placeholder=""
+                        />
+                        {formErrors.salary && <p className="text-red-500 text-xs mt-1">{formErrors.salary}</p>}
                       </div>
 
                       {/* Phone */}
@@ -497,8 +648,15 @@ const ManageEmployees = () => {
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           <FaPhone className="inline mr-1.5" />Phone
                         </label>
-                        <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange}
-                          className={inputClass(false)} placeholder="+1234567890" />
+                        <input
+                          type="tel"
+                          name="phone"
+                          value={formData.phone}
+                          onChange={handleInputChange}
+                          className={inputClass(formErrors.phone)}
+                          placeholder=""
+                        />
+                        {formErrors.phone && <p className="text-red-500 text-xs mt-1">{formErrors.phone}</p>}
                       </div>
 
                       {/* Hire Date */}
@@ -506,19 +664,34 @@ const ManageEmployees = () => {
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           Hire Date
                         </label>
-                        <input type="date" name="hireDate" value={formData.hireDate} onChange={handleInputChange}
-                          className={inputClass(false)} style={{ colorScheme: 'dark' }} />
+                        <input
+                          type="date"
+                          name="hireDate"
+                          value={formData.hireDate}
+                          onChange={handleInputChange}
+                          className={inputClass(false)}
+                          style={{ colorScheme: 'dark' }}
+                        />
                       </div>
 
                       {/* Address */}
                       <div className="sm:col-span-2">
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           Address
+                          <span className="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500">(max 100 chars)</span>
                         </label>
-                        <textarea name="address" value={formData.address} onChange={handleInputChange}
+                        <textarea
+                          name="address"
+                          value={formData.address}
+                          onChange={handleInputChange}
+                          maxLength={100}
                           rows="2"
                           className={inputClass(false) + ' resize-none'}
-                          placeholder="Enter Address" />
+                          placeholder="Enter Address"
+                        />
+                        <p className={`text-xs text-right mt-0.5 ${formData.address.length >= 90 ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                          {formData.address.length}/100
+                        </p>
                       </div>
                     </div>
 
@@ -531,12 +704,17 @@ const ManageEmployees = () => {
 
                     {/* Action Buttons */}
                     <div className="flex gap-3 mt-5 pt-4 border-t border-gray-200 dark:border-gray-700">
-                      <button type="button" onClick={closeModal}
-                        className="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <button
+                        type="button"
+                        onClick={closeModal}
+                        className="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
                         Cancel
                       </button>
-                      <button type="submit"
-                        className="flex-1 px-4 py-2.5 bg-[#0C2B4E] dark:bg-[#1a4d7a] text-white text-sm font-semibold rounded-lg hover:bg-[#0a243d] dark:hover:bg-[#0C2B4E] transition-colors shadow-lg">
+                      <button
+                        type="submit"
+                        className="flex-1 px-4 py-2.5 bg-[#0C2B4E] dark:bg-[#1a4d7a] text-white text-sm font-semibold rounded-lg hover:bg-[#0a243d] dark:hover:bg-[#0C2B4E] transition-colors shadow-lg"
+                      >
                         {editingEmployee ? 'Update Employee' : 'Create Employee'}
                       </button>
                     </div>
