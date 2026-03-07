@@ -1,552 +1,593 @@
 // src/components/employee/EmployeeProjects.jsx
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX: Employees CANNOT call PUT /projects/:id  (admin-only → 403 error)
-//      Employees must call PUT /projects/:id/task  with { taskId, status }
-//      Project data includes myMember.tasks[] — displayed and updated here.
-// ─────────────────────────────────────────────────────────────────────────────
+// Production · Inter · Brand #101828 · Dark/Light · Redesigned Modal
 import React, { useState, useEffect, useCallback } from 'react';
-import { projectAPI } from '../../services/api';
-import socketService from '../../services/socketService';
-import { toast } from 'react-toastify';
+import { projectAPI }   from '../../services/api';
+import socketService    from '../../services/socketService';
+import { toast }        from 'react-toastify';
 import {
   Briefcase, X, Clock, CheckCircle, AlertTriangle,
-  Calendar, User, FileText, ChevronRight, Flag,
-  ListChecks, Circle, PlayCircle, Ban,
+  Calendar, User, FileText, Flag, ListChecks,
+  Circle, PlayCircle, Ban, Target, TrendingUp, Users,
 } from 'lucide-react';
+import { Dialog, IconButton, useMediaQuery, useTheme, Slide, Fade } from '@mui/material';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+/* ─── inject Inter font + global styles once ───────────────────────────────── */
+(() => {
+  if (!document.getElementById('ep-inter')) {
+    const l = document.createElement('link');
+    l.id = 'ep-inter'; l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900&display=swap';
+    document.head.appendChild(l);
+  }
+  if (!document.getElementById('ep-css')) {
+    const s = document.createElement('style'); s.id = 'ep-css';
+    s.textContent = `
+      @keyframes ep-spin { to { transform:rotate(360deg) } }
+      @keyframes ep-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+      .ep-body::-webkit-scrollbar { width:4px }
+      .ep-body::-webkit-scrollbar-track { background:transparent }
+      .ep-body::-webkit-scrollbar-thumb { background:rgba(128,128,128,.2); border-radius:4px }
+      .ep-body::-webkit-scrollbar-thumb:hover { background:rgba(128,128,128,.35) }
+    `;
+    document.head.appendChild(s);
+  }
+})();
 
-const isProjectDelayed = (p) =>
-  p.status !== 'Completed' && new Date() > new Date(p.deadline);
+const SlideUp = React.forwardRef((p, r) => <Slide direction="up" ref={r} {...p} />);
 
-const daysLeft = (deadline, status) => {
-  if (status === 'Completed') return null;
-  return Math.ceil((new Date(deadline) - new Date()) / 86400000);
+/* ─── watch Tailwind .dark on <html> ───────────────────────────────────────── */
+function useDark() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    const ob = new MutationObserver(() => setDark(document.documentElement.classList.contains('dark')));
+    ob.observe(document.documentElement, { attributeFilter: ['class'] });
+    return () => ob.disconnect();
+  }, []);
+  return dark;
+}
+
+/* ─── data maps ─────────────────────────────────────────────────────────────── */
+const ST_MAP = {
+  'Completed':    { bar:'#10b981', dBg:'#052e16', dTx:'#34d399', lBg:'#dcfce7', lTx:'#059669' },
+  'In Progress':  { bar:'#3b82f6', dBg:'#172554', dTx:'#93c5fd', lBg:'#eff6ff', lTx:'#2563eb' },
+  'Not Started':  { bar:'#64748b', dBg:'#1e293b', dTx:'#94a3b8', lBg:'#f1f5f9', lTx:'#64748b' },
+  'Delayed':      { bar:'#f43f5e', dBg:'#4c0519', dTx:'#fb7185', lBg:'#fff1f2', lTx:'#e11d48' },
+  'On Hold':      { bar:'#f59e0b', dBg:'#451a03', dTx:'#fbbf24', lBg:'#fffbeb', lTx:'#d97706' },
+};
+const getSt  = (p) => { const k = (p.status !== 'Completed' && new Date() > new Date(p.deadline)) ? 'Delayed' : p.status; return { key: k, ...(ST_MAP[k] || ST_MAP['Not Started']) }; };
+const dLeft  = (dl, st) => st === 'Completed' ? null : Math.ceil((new Date(dl) - new Date()) / 86400000);
+
+const TK_MAP = {
+  'To Do':      { label:'To Do',       Icon:Circle,      dBg:'#1e293b', dTx:'#94a3b8', lBg:'#f1f5f9', lTx:'#64748b' },
+  'In Progress':{ label:'In Progress', Icon:PlayCircle,  dBg:'#172554', dTx:'#93c5fd', lBg:'#eff6ff', lTx:'#2563eb' },
+  'Done':       { label:'Done',        Icon:CheckCircle, dBg:'#052e16', dTx:'#34d399', lBg:'#dcfce7', lTx:'#059669' },
+  'Blocked':    { label:'Blocked',     Icon:Ban,         dBg:'#4c0519', dTx:'#fb7185', lBg:'#fff1f2', lTx:'#e11d48' },
+};
+const PR_MAP = {
+  'High':  { Icon:AlertTriangle, dBg:'#4c0519', dTx:'#fb7185', dBr:'#9f1239', lBg:'#fff1f2', lTx:'#e11d48', lBr:'#fecdd3' },
+  'Medium':{ Icon:Flag,          dBg:'#451a03', dTx:'#fbbf24', dBr:'#92400e', lBg:'#fffbeb', lTx:'#d97706', lBr:'#fde68a' },
+  'Low':   { Icon:Target,        dBg:'#052e16', dTx:'#34d399', dBr:'#166534', lBg:'#dcfce7', lTx:'#059669', lBr:'#6ee7b7' },
+};
+const ACTS = {
+  'To Do':      [{ next:'In Progress', label:'Start',    bg:'#2563eb' }],
+  'In Progress':[{ next:'Done',        label:'Complete', bg:'#059669' }, { next:'Blocked', label:'Block', bg:'#e11d48' }],
+  'Blocked':    [{ next:'In Progress', label:'Resume',   bg:'#2563eb' }],
+  'Done':       [{ next:'In Progress', label:'Reopen',   bg:'#64748b' }],
 };
 
-const PROJ_STATUS = {
-  'Completed':   { dot: '#10b981', bar: '#10b981', pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
-  'In Progress': { dot: '#3b82f6', bar: '#3b82f6', pill: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-  'Not Started': { dot: '#94a3b8', bar: '#94a3b8', pill: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' },
-  'Delayed':     { dot: '#ef4444', bar: '#ef4444', pill: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' },
-  'On Hold':     { dot: '#f59e0b', bar: '#f59e0b', pill: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
-};
-const getProjStatus = (p) => {
-  const key = isProjectDelayed(p) ? 'Delayed' : p.status;
-  return { key, ...(PROJ_STATUS[key] || PROJ_STATUS['Not Started']) };
-};
+/* ─── design tokens ─────────────────────────────────────────────────────────── */
+const FF = "'Inter',-apple-system,BlinkMacSystemFont,sans-serif";
+const tok = (d) => ({
+  /* page */
+  page:  d ? '#0c1220' : '#f0f2f5',
+  /* cards */
+  card:  d ? '#121c2e' : '#ffffff',
+  cBd:   d ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)',
+  cHBd:  d ? '#3b82f6' : '#101828',
+  cSh:   d ? '0 12px 40px rgba(0,0,0,.6)' : '0 8px 32px rgba(16,24,40,.1)',
+  /* surfaces */
+  sf:    d ? '#182035' : '#f8fafc',
+  sfBd:  d ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)',
+  /* text */
+  t1: d ? '#eef2ff' : '#0f172a',
+  t2: d ? '#8b97ad' : '#475569',
+  t3: d ? '#3e4e65' : '#94a3b8',
+  /* track / spinner */
+  tr:    d ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+  sp:    d ? 'rgba(255,255,255,0.12)' : '#e2e8f0',
+  /* filter pills */
+  pABg:'#101828', pATx:'#fff', pABd:'rgba(59,130,246,0.4)',
+  pIBg: d ? 'rgba(255,255,255,0.05)' : '#ffffff',
+  pITx: d ? '#6b7280' : '#64748b',
+  pIBd: d ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.09)',
+  /* modal – three-layer system */
+  mBg:   d ? '#0d1726' : '#ffffff',       // modal backdrop
+  mL1:   d ? '#121c2e' : '#f8fafc',       // layer 1 – header band
+  mL2:   d ? '#182035' : '#f1f4f8',       // layer 2 – inner surfaces
+  mL3:   d ? '#1e2a42' : '#e9ecf1',       // layer 3 – deepest inset
+  mDv:   d ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)',
+  mBd:   d ? 'rgba(255,255,255,0.1)'  : 'rgba(0,0,0,0.09)',
+  mSh:   d ? '0 48px 96px rgba(0,0,0,.92)' : '0 32px 80px rgba(0,0,0,.18)',
+  /* close btn */
+  xBg:   d ? 'rgba(255,255,255,0.07)' : '#eff1f5',
+  xBgH:  d ? 'rgba(255,255,255,0.13)' : '#e2e6ec',
+  xTx:   d ? '#6b7280' : '#94a3b8',
+  xTxH:  d ? '#eef2ff' : '#0f172a',
+});
 
-const TASK_STATUS = {
-  'To Do':       { label: 'To Do',       Icon: Circle,       cls: 'text-slate-400',   bg: 'bg-slate-50 dark:bg-slate-800/60',        border: 'border-slate-200 dark:border-slate-700'      },
-  'In Progress': { label: 'In Progress', Icon: PlayCircle,   cls: 'text-blue-500',    bg: 'bg-blue-50 dark:bg-blue-900/20',          border: 'border-blue-200 dark:border-blue-800'        },
-  'Done':        { label: 'Done',        Icon: CheckCircle,  cls: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20',    border: 'border-emerald-200 dark:border-emerald-800'  },
-  'Blocked':     { label: 'Blocked',     Icon: Ban,          cls: 'text-red-500',     bg: 'bg-red-50 dark:bg-red-900/20',            border: 'border-red-200 dark:border-red-800'          },
-};
+/* ─── helpers ───────────────────────────────────────────────────────────────── */
+const $ = (base, extra) => ({ fontFamily: FF, ...base, ...extra });
 
-const PRIORITY_CLS = {
-  High:   'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
-  Medium: 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800',
-  Low:    'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800',
-};
-
-const STAT_CFG = [
-  { key: 'total',      label: 'Total',       Icon: Briefcase,     from: '#1e3a5f', to: '#0f2a4a' },
-  { key: 'completed',  label: 'Completed',   Icon: CheckCircle,   from: '#065f46', to: '#047857' },
-  { key: 'inProgress', label: 'In Progress', Icon: Clock,         from: '#1e3a8a', to: '#1d4ed8' },
-  { key: 'delayed',    label: 'Delayed',     Icon: AlertTriangle, from: '#7f1d1d', to: '#b91c1c' },
-];
-
-// Valid next statuses for each task status
-const TASK_ACTIONS = {
-  'To Do':       [{ next: 'In Progress', label: 'Start',   cls: 'bg-blue-600 hover:bg-blue-700 text-white' }],
-  'In Progress': [{ next: 'Done',        label: 'Done',    cls: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
-                  { next: 'Blocked',     label: 'Blocked', cls: 'bg-red-500 hover:bg-red-600 text-white' }],
-  'Blocked':     [{ next: 'In Progress', label: 'Resume',  cls: 'bg-blue-600 hover:bg-blue-700 text-white' }],
-  'Done':        [{ next: 'In Progress', label: 'Reopen',  cls: 'bg-slate-500 hover:bg-slate-600 text-white' }],
-};
-
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-
-const StatCard = ({ cfg, value, i }) => (
-  <div
-    className="relative overflow-hidden rounded-2xl p-5 text-white"
-    style={{
-      background: `linear-gradient(135deg, ${cfg.from}, ${cfg.to})`,
-      boxShadow: `0 4px 20px -4px ${cfg.from}99`,
-      animation: `rise .45s cubic-bezier(.22,1,.36,1) ${i * 0.07}s both`,
-    }}
-  >
-    <p className="text-[11px] font-semibold tracking-widest uppercase text-white/60 mb-2">{cfg.label}</p>
-    <p className="text-5xl font-black leading-none mb-3">{value}</p>
-    <div className="absolute top-3 right-3 opacity-15">
-      <cfg.Icon size={56} strokeWidth={1.2} />
+/* ════════════════════════════════════════════════════════════════════════════
+   STAT CARD
+══════════════════════════════════════════════════════════════════════════════ */
+const StatCard = ({ label, value, Icon, grad, tk }) => (
+  <div style={$(({ background:tk.card, border:`1px solid ${tk.cBd}`, borderRadius:14, padding:'15px 17px' }))}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+      <div style={{ width:38, height:38, borderRadius:11, display:'flex', alignItems:'center', justifyContent:'center', background:grad, boxShadow:'0 4px 14px rgba(0,0,0,.3)', flexShrink:0 }}>
+        <Icon size={17} color="#fff" strokeWidth={2} />
+      </div>
+      <span style={{ fontSize:26, fontWeight:900, color:tk.t1, letterSpacing:'-1.5px', lineHeight:1 }}>{value}</span>
     </div>
-    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-      <div className="h-full bg-white/40 rounded-full" style={{ width: value > 0 ? '55%' : '0%', transition: 'width .8s ease' }} />
-    </div>
+    <p style={{ fontSize:9.5, fontWeight:700, color:tk.t3, textTransform:'uppercase', letterSpacing:'.12em', margin:0 }}>{label}</p>
   </div>
 );
 
-// ─── Task Row ─────────────────────────────────────────────────────────────────
-
-const TaskRow = ({ task, projectId, onTaskUpdate, updatingTask }) => {
-  const cfg = TASK_STATUS[task.status] || TASK_STATUS['To Do'];
-  const actions = TASK_ACTIONS[task.status] || [];
-  const busy = updatingTask === task._id;
+/* ════════════════════════════════════════════════════════════════════════════
+   TASK ROW  (inside modal)
+══════════════════════════════════════════════════════════════════════════════ */
+const TaskRow = ({ task, pid, onUpd, busy, tk, d }) => {
+  const cfg = TK_MAP[task.status] || TK_MAP['To Do'];
+  const pr  = PR_MAP[task.priority] || PR_MAP['Low'];
+  const sBg = d ? cfg.dBg : cfg.lBg, sTx = d ? cfg.dTx : cfg.lTx;
+  const pBg = d ? pr.dBg  : pr.lBg,  pTx = d ? pr.dTx  : pr.lTx, pBd = d ? pr.dBr : pr.lBr;
+  const PI  = pr.Icon;
 
   return (
-    <div className={`rounded-xl border p-3.5 transition-all ${cfg.bg} ${cfg.border}`}>
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <cfg.Icon size={14} className={`flex-shrink-0 ${cfg.cls}`} />
-          <span className="text-[13px] font-semibold text-slate-800 dark:text-white truncate">{task.title}</span>
+    <div style={$(({ background:tk.mL2, border:`1px solid ${tk.mDv}`, borderRadius:10, padding:'10px 13px', transition:'border-color .15s' }))}>
+      {/* title row */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+        <div style={{ width:22, height:22, borderRadius:6, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, background:sBg }}>
+          <cfg.Icon size={12} style={{ color:sTx }} strokeWidth={2.2} />
         </div>
-        <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${cfg.cls} bg-white/60 dark:bg-black/20 border ${cfg.border}`}>
-          {cfg.label}
+        <span style={{ fontFamily:FF, fontSize:12.5, fontWeight:600, color:tk.t1, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {task.title}
         </span>
-      </div>
-
-      {task.description && (
-        <p className="text-[12px] text-slate-500 dark:text-slate-400 mb-2.5 ml-5 leading-relaxed">{task.description}</p>
-      )}
-
-      <div className="flex items-center justify-between ml-5 gap-2">
-        <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
-          {task.priority && (
-            <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-semibold ${PRIORITY_CLS[task.priority] || ''}`}>
-              {task.priority}
-            </span>
-          )}
-          {task.deadline && (
-            <span className="flex items-center gap-1">
-              <Calendar size={10} />
-              {new Date(task.deadline).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-1.5 flex-shrink-0">
-          {actions.map(a => (
-            <button
-              key={a.next}
-              disabled={busy}
-              onClick={() => onTaskUpdate(projectId, task._id, a.next)}
-              className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all disabled:opacity-40 ${a.cls}`}
-            >
-              {busy
-                ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block align-middle" />
-                : a.label}
+        <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+          {(ACTS[task.status] || []).map(a => (
+            <button key={a.next} disabled={busy}
+              onClick={e => { e.stopPropagation(); onUpd(pid, task._id, a.next); }}
+              style={{ fontFamily:FF, fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6, color:'#fff', background:a.bg, border:'none', cursor:busy?'not-allowed':'pointer', opacity:busy?.4:1, letterSpacing:'.02em', transition:'opacity .15s' }}>
+              {busy ? '…' : a.label}
             </button>
           ))}
         </div>
       </div>
-    </div>
-  );
-};
-
-// ─── Project Card ─────────────────────────────────────────────────────────────
-
-const ProjectCard = ({ p, i, onOpen }) => {
-  const st = getProjStatus(p);
-  const dl = daysLeft(p.deadline, p.status);
-  const tasks = p.myMember?.tasks || [];
-  const doneTasks = tasks.filter(t => t.status === 'Done').length;
-  const taskPct = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) : 0;
-
-  const deadlineLabel =
-    p.status === 'Completed' ? 'Completed'
-    : dl === null            ? '—'
-    : dl < 0                 ? `${Math.abs(dl)}d overdue`
-    : dl === 0               ? 'Due today'
-    : `${dl}d left`;
-
-  const deadlineCls =
-    p.status === 'Completed'     ? 'text-emerald-600 dark:text-emerald-400'
-    : dl !== null && dl < 0      ? 'text-red-500 font-bold'
-    : dl !== null && dl <= 2     ? 'text-amber-500 font-semibold'
-    : 'text-slate-400 dark:text-slate-500';
-
-  return (
-    <div
-      className="group bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 cursor-pointer flex flex-col"
-      style={{ animation: `rise .45s cubic-bezier(.22,1,.36,1) ${i * 0.06 + 0.2}s both` }}
-      onClick={() => onOpen(p)}
-    >
-      <div className="h-1 w-full" style={{ background: st.bar }} />
-
-      <div className="p-5 flex flex-col gap-3 flex-1">
-        {/* Title + badge */}
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-bold text-slate-800 dark:text-white text-[15px] leading-snug line-clamp-2 group-hover:text-[#0C2B4E] dark:group-hover:text-blue-300 transition-colors">
-            {p.title}
-          </h3>
-          <span className={`flex-shrink-0 flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${st.pill}`}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />
-            {st.key}
+      {/* meta row */}
+      <div style={{ display:'flex', alignItems:'center', gap:5, paddingLeft:30 }}>
+        {task.priority && (
+          <span style={{ fontFamily:FF, display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, fontSize:9.5, fontWeight:600, background:pBg, color:pTx, border:`1px solid ${pBd}` }}>
+            <PI size={8} strokeWidth={2.5} />{task.priority}
           </span>
-        </div>
-
-        {/* Description */}
-        <p className="text-[13px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
-          {p.description || 'No description.'}
-        </p>
-
-        {/* Task progress */}
-        <div>
-          <div className="flex justify-between items-center mb-1.5">
-            <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1 uppercase tracking-wide">
-              <ListChecks size={11} /> Tasks
-            </span>
-            <span className="text-[11px] font-bold" style={{ color: st.bar }}>
-              {tasks.length > 0 ? `${doneTasks}/${tasks.length} done` : 'No tasks'}
-            </span>
-          </div>
-          <div className="h-1.5 bg-slate-100 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{ width: `${taskPct}%`, background: st.bar }}
-            />
-          </div>
-        </div>
-
-        {/* Meta */}
-        <div className="flex items-center justify-between">
-          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${PRIORITY_CLS[p.priority] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-            <Flag size={9} /> {p.priority || '—'}
-          </span>
-          <span className={`flex items-center gap-1 text-[12px] ${deadlineCls}`}>
-            <Calendar size={11} /> {deadlineLabel}
-          </span>
-        </div>
-
-        {/* Assigned by */}
-        {p.assignedBy?.name && (
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500 border-t border-slate-100 dark:border-gray-800 pt-3">
-            <User size={11} />
-            <span>By <span className="font-semibold text-slate-600 dark:text-slate-300">{p.assignedBy.name}</span></span>
-            {p.myMember?.role && <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 font-semibold">{p.myMember.role}</span>}
-          </div>
         )}
-
-        <button
-          className="w-full flex items-center justify-center gap-1.5 text-[12px] font-semibold py-2 rounded-xl bg-slate-50 dark:bg-gray-800 text-slate-500 hover:bg-[#0C2B4E] hover:text-white dark:hover:bg-[#0C2B4E] transition-all border border-slate-100 dark:border-gray-700"
-          onClick={e => { e.stopPropagation(); onOpen(p); }}
-        >
-          View Tasks & Details <ChevronRight size={13} />
-        </button>
+        {task.deadline && (
+          <span style={{ fontFamily:FF, display:'flex', alignItems:'center', gap:3, fontSize:9.5, color:tk.t2, fontWeight:500 }}>
+            <Calendar size={9} strokeWidth={2} />
+            {new Date(task.deadline).toLocaleDateString('en-US', { month:'short', day:'numeric' })}
+          </span>
+        )}
+        <span style={{ fontFamily:FF, marginLeft:'auto', fontSize:9.5, fontWeight:600, padding:'2px 7px', borderRadius:5, background:sBg, color:sTx }}>
+          {cfg.label}
+        </span>
       </div>
     </div>
   );
 };
 
-// ─── Detail Modal ─────────────────────────────────────────────────────────────
-
-const Modal = ({ p, onClose, onTaskUpdate, updatingTask }) => {
-  const st = getProjStatus(p);
+/* ════════════════════════════════════════════════════════════════════════════
+   PROJECT CARD  (list view)
+══════════════════════════════════════════════════════════════════════════════ */
+const ProjCard = ({ p, onOpen, tk, d }) => {
+  const st    = getSt(p);
+  const dl    = dLeft(p.deadline, p.status);
   const tasks = p.myMember?.tasks || [];
-  const doneTasks = tasks.filter(t => t.status === 'Done').length;
-  const taskPct = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) : 0;
-  const dl = daysLeft(p.deadline, p.status);
+  const done  = tasks.filter(x => x.status === 'Done').length;
+  const pct   = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+  const dlLbl = p.status === 'Completed' ? 'Completed' : dl === null ? '—' : dl < 0 ? `${Math.abs(dl)}d overdue` : dl === 0 ? 'Due today' : `${dl}d left`;
+  const dlClr = p.status === 'Completed' ? '#10b981' : dl !== null && dl < 0 ? '#f43f5e' : dl !== null && dl <= 2 ? '#f59e0b' : tk.t3;
+  const sBg   = d ? st.dBg : st.lBg, sTx = d ? st.dTx : st.lTx;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
-      style={{ background: 'rgba(2,8,23,.75)', backdropFilter: 'blur(6px)' }}
-      onClick={onClose}
+    <div onClick={() => onOpen(p)}
+      style={$(({ background:tk.card, border:`1px solid ${tk.cBd}`, borderRadius:14, overflow:'hidden', cursor:'pointer', transition:'all .2s' }))}
+      onMouseEnter={e => { const el = e.currentTarget; el.style.borderColor=tk.cHBd; el.style.transform='translateY(-2px)'; el.style.boxShadow=tk.cSh; }}
+      onMouseLeave={e => { const el = e.currentTarget; el.style.borderColor=tk.cBd;  el.style.transform='none';             el.style.boxShadow='none'; }}
     >
-      <div
-        className="bg-white dark:bg-gray-900 w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-        style={{ maxHeight: '92vh', animation: 'rise .35s cubic-bezier(.22,1,.36,1) both' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 py-5 flex-shrink-0" style={{ background: 'linear-gradient(135deg,#0c2b4e,#1a4d7a)' }}>
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex gap-2 flex-wrap">
-              <span className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/20 text-white">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />
-                {st.key}
-              </span>
-              {p.priority && (
-                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/20 text-white">
-                  {p.priority} Priority
-                </span>
-              )}
-            </div>
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 text-white transition-all flex-shrink-0">
-              <X size={14} />
-            </button>
+      <div style={{ height:3, background:st.bar }} />
+      <div style={{ padding:'14px 16px' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10, marginBottom:5 }}>
+          <h3 style={{ fontFamily:FF, fontSize:13.5, fontWeight:700, color:tk.t1, margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, letterSpacing:'-0.2px' }}>{p.title}</h3>
+          <span style={{ fontFamily:FF, fontSize:10, fontWeight:700, padding:'3px 9px', borderRadius:20, flexShrink:0, background:sBg, color:sTx }}>{st.key}</span>
+        </div>
+        {p.description && (
+          <p style={{ fontFamily:FF, fontSize:11.5, color:tk.t2, margin:'0 0 11px', lineHeight:1.6, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+            {p.description}
+          </p>
+        )}
+        <div style={{ marginBottom:12 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
+            <span style={{ fontFamily:FF, fontSize:10.5, color:tk.t3, fontWeight:500 }}>{done}/{tasks.length} tasks</span>
+            <span style={{ fontFamily:FF, fontSize:11, fontWeight:800, color:tk.t1 }}>{pct}%</span>
           </div>
-          <h2 className="text-lg font-black text-white leading-tight mb-1">{p.title}</h2>
-          <p className="text-[12px] text-white/60 mb-4 line-clamp-2">{p.description}</p>
-          <div>
-            <div className="flex justify-between text-[11px] text-white/60 mb-1.5">
-              <span className="flex items-center gap-1"><ListChecks size={11} /> My Tasks Progress</span>
-              <span className="text-white font-bold">{doneTasks}/{tasks.length} done</span>
-            </div>
-            <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-              <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${taskPct}%` }} />
-            </div>
+          <div style={{ height:4, borderRadius:3, background:tk.tr, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${pct}%`, background:st.bar, borderRadius:3, transition:'width .4s ease' }} />
           </div>
         </div>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', paddingTop:11, borderTop:`1px solid ${tk.cBd}` }}>
+          <span style={{ fontFamily:FF, display:'flex', alignItems:'center', gap:4, fontSize:11, color:tk.t3, fontWeight:500 }}>
+            <User size={11} strokeWidth={2} />{p.members?.length || 0} members
+          </span>
+          <span style={{ fontFamily:FF, display:'flex', alignItems:'center', gap:4, fontSize:11, fontWeight:600, padding:'3px 9px', borderRadius:6, color:dlClr, background:`${dlClr}15` }}>
+            <Clock size={10} strokeWidth={2} />{dlLbl}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+/* ════════════════════════════════════════════════════════════════════════════
+   MODAL  — completely redesigned
+══════════════════════════════════════════════════════════════════════════════ */
+const Modal = ({ p, onClose, onUpd, busyId, tk, d }) => {
+  const st    = getSt(p);
+  const tasks = p.myMember?.tasks || [];
+  const done  = tasks.filter(x => x.status === 'Done').length;
+  const pct   = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+  const dl    = dLeft(p.deadline, p.status);
+  const muiTh = useTheme();
+  const mob   = useMediaQuery(muiTh.breakpoints.down('sm'));
+  const pr    = PR_MAP[p.priority] || PR_MAP['Medium'];
+  const PI    = pr.Icon;
 
-          {isProjectDelayed(p) && (
-            <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
-              <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
-              <div>
-                <p className="text-[13px] font-bold text-red-700 dark:text-red-400">Project Overdue</p>
-                <p className="text-[11px] text-red-500 mt-0.5">Deadline has passed. Please contact your admin.</p>
-              </div>
-            </div>
-          )}
+  const dlLbl = dl === null ? null : dl < 0 ? `${Math.abs(dl)}d overdue` : dl === 0 ? 'Due today' : `${dl}d left`;
+  const dlClr = dl === null ? tk.t3 : dl < 0 ? '#f43f5e' : dl <= 2 ? '#f59e0b' : '#10b981';
+  const sBg   = d ? st.dBg : st.lBg, sTx = d ? st.dTx : st.lTx;
+  const pBg   = d ? pr.dBg : pr.lBg, pTx = d ? pr.dTx : pr.lTx, pBd = d ? pr.dBr : pr.lBr;
 
-          {/* Info grid */}
-          <div className="grid grid-cols-2 gap-2.5">
-            {[
-              { icon: User,     label: 'Assigned By', val: p.assignedBy?.name || '—', cls: '' },
-              { icon: Calendar, label: 'Start Date',   val: p.startDate ? new Date(p.startDate).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}) : '—', cls: '' },
-              { icon: Clock,    label: 'Deadline',     val: new Date(p.deadline).toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'}),
-                cls: isProjectDelayed(p) ? 'text-red-600 dark:text-red-400 font-bold' : '' },
-              { icon: Calendar, label: p.status === 'Completed' ? 'Completed On' : dl !== null && dl < 0 ? 'Overdue By' : 'Days Left',
-                val: p.status === 'Completed'
-                  ? (p.completedAt ? new Date(p.completedAt).toLocaleDateString('en-US',{day:'numeric',month:'short'}) : '—')
-                  : dl === null ? '—'
-                  : dl < 0 ? `${Math.abs(dl)} days`
-                  : `${dl} days`,
-                cls: p.status === 'Completed' ? 'text-emerald-600 font-bold' : dl !== null && dl < 0 ? 'text-red-500 font-bold' : dl !== null && dl <= 2 ? 'text-amber-500 font-semibold' : '' },
-            ].map(({ icon: Icon, label, val, cls }) => (
-              <div key={label} className="bg-slate-50 dark:bg-gray-800 rounded-xl p-3">
-                <div className="flex items-center gap-1 text-[11px] text-slate-400 mb-1 font-medium">
-                  <Icon size={11} /> {label}
-                </div>
-                <p className={`text-[13px] text-slate-700 dark:text-slate-200 ${cls}`}>{val}</p>
-              </div>
-            ))}
+  const px = mob ? 16 : 20; // horizontal padding
+
+  return (
+    <Dialog
+      open={!!p}
+      onClose={onClose}
+      maxWidth="xs"
+      fullWidth
+      fullScreen={mob}
+      TransitionComponent={SlideUp}
+      PaperProps={{ sx: {
+        fontFamily: FF,
+        borderRadius: mob ? 0 : '20px',
+        bgcolor: tk.mBg,
+        backgroundImage: 'none',
+        border: `1px solid ${tk.mBd}`,
+        boxShadow: tk.mSh,
+        m: mob ? 0 : '14px',
+        maxHeight: mob ? '100%' : '92vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}}
+    >
+
+      {/* ══ TOP ACCENT LINE ══ */}
+      <div style={{ height: 3, background: `linear-gradient(90deg, ${st.bar}, ${st.bar}80)`, flexShrink: 0 }} />
+
+      {/* ══════════════════════════════
+          HEADER BAND  (fixed, no scroll)
+      ══════════════════════════════ */}
+      <div style={{ background: tk.mL1, padding: `18px ${px}px 16px`, borderBottom:`1px solid ${tk.mDv}`, flexShrink: 0 }}>
+
+        {/* row: title + close */}
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, marginBottom:12 }}>
+          <div style={{ flex:1, minWidth:0 }}>
+            <p style={{ fontFamily:FF, fontSize:10, fontWeight:700, color:tk.t3, textTransform:'uppercase', letterSpacing:'.12em', margin:'0 0 5px' }}>
+              Project Details
+            </p>
+            <h2 style={{ fontFamily:FF, fontSize:16, fontWeight:800, color:tk.t1, margin:0, lineHeight:1.3, letterSpacing:'-0.3px', wordBreak:'break-word' }}>
+              {p.title}
+            </h2>
           </div>
+          <IconButton onClick={onClose} size="small" sx={{
+            width:30, height:30, flexShrink:0, mt:'2px',
+            bgcolor:tk.xBg, color:tk.xTx,
+            '&:hover':{ bgcolor:tk.xBgH, color:tk.xTxH },
+            transition:'all .15s',
+          }}>
+            <X size={14} strokeWidth={2.5} />
+          </IconButton>
+        </div>
 
-          {/* Role badge */}
-          {p.myMember?.role && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 flex items-center gap-2">
-              <User size={14} className="text-blue-500 flex-shrink-0" />
-              <span className="text-[12px] text-blue-700 dark:text-blue-300">
-                Your role: <strong>{p.myMember.role}</strong>
+        {/* status + deadline pills */}
+        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap', marginBottom:14 }}>
+          <span style={{ fontFamily:FF, fontSize:10.5, fontWeight:700, padding:'4px 11px', borderRadius:20, background:sBg, color:sTx, letterSpacing:'.02em' }}>
+            {st.key}
+          </span>
+          {dlLbl && (
+            <span style={{ fontFamily:FF, display:'flex', alignItems:'center', gap:4, fontSize:10.5, fontWeight:600, color:dlClr, background:`${dlClr}1a`, padding:'4px 10px', borderRadius:20 }}>
+              <Clock size={9} strokeWidth={2.5} />{dlLbl}
+            </span>
+          )}
+        </div>
+
+        {/* ── PROGRESS BAR BLOCK ── */}
+        <div style={{ background:tk.mL2, border:`1px solid ${tk.mDv}`, borderRadius:12, padding:'13px 14px' }}>
+          {/* bar label row */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+              <TrendingUp size={12} style={{ color:st.bar }} strokeWidth={2.5} />
+              <span style={{ fontFamily:FF, fontSize:11, fontWeight:600, color:tk.t2 }}>Progress</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'baseline', gap:3 }}>
+              <span style={{ fontFamily:FF, fontSize:22, fontWeight:900, color:tk.t1, letterSpacing:'-1px', lineHeight:1 }}>{pct}</span>
+              <span style={{ fontFamily:FF, fontSize:11, fontWeight:700, color:tk.t2 }}>%</span>
+            </div>
+          </div>
+          {/* bar track */}
+          <div style={{ height:6, borderRadius:3, background:tk.tr, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg, ${st.bar}, ${st.bar}cc)`, borderRadius:3, transition:'width .6s cubic-bezier(.4,0,.2,1)' }} />
+          </div>
+          {/* done / remaining */}
+          <div style={{ display:'flex', justifyContent:'space-between', marginTop:6 }}>
+            <span style={{ fontFamily:FF, fontSize:10, color:tk.t2, fontWeight:500 }}>{done} of {tasks.length} done</span>
+            {tasks.length - done > 0 && <span style={{ fontFamily:FF, fontSize:10, color:tk.t3, fontWeight:500 }}>{tasks.length - done} remaining</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════
+          SCROLLABLE BODY
+      ══════════════════════════════ */}
+      <div className="ep-body" style={{ overflowY:'auto', flex:1, background:tk.mBg }}>
+        <div style={{ padding:`16px ${px}px 0` }}>
+
+          {/* ── META ROW  (3 tiles) ── */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:7, marginBottom:12 }}>
+
+            {/* Priority tile */}
+            <div style={{ background:tk.mL1, border:`1px solid ${tk.mDv}`, borderRadius:11, padding:'10px 12px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:6 }}>
+                <PI size={10} style={{ color: pTx }} strokeWidth={2.5} />
+                <span style={{ fontFamily:FF, fontSize:9, fontWeight:700, color:tk.t3, textTransform:'uppercase', letterSpacing:'.1em' }}>Priority</span>
+              </div>
+              <span style={{ fontFamily:FF, display:'inline-flex', alignItems:'center', gap:4, fontSize:11.5, fontWeight:700, padding:'3px 9px', borderRadius:6, background:pBg, color:pTx, border:`1px solid ${pBd}` }}>
+                {p.priority || 'Medium'}
               </span>
             </div>
+
+            {/* Deadline tile */}
+            <div style={{ background:tk.mL1, border:`1px solid ${tk.mDv}`, borderRadius:11, padding:'10px 12px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:6 }}>
+                <Calendar size={10} style={{ color:'#60a5fa' }} strokeWidth={2} />
+                <span style={{ fontFamily:FF, fontSize:9, fontWeight:700, color:tk.t3, textTransform:'uppercase', letterSpacing:'.1em' }}>Deadline</span>
+              </div>
+              <span style={{ fontFamily:FF, fontSize:12, fontWeight:700, color:tk.t1 }}>
+                {new Date(p.deadline).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' })}
+              </span>
+            </div>
+
+            {/* Team tile */}
+            <div style={{ background:tk.mL1, border:`1px solid ${tk.mDv}`, borderRadius:11, padding:'10px 12px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:6 }}>
+                <Users size={10} style={{ color:'#a78bfa' }} strokeWidth={2} />
+                <span style={{ fontFamily:FF, fontSize:9, fontWeight:700, color:tk.t3, textTransform:'uppercase', letterSpacing:'.1em' }}>Team</span>
+              </div>
+              <span style={{ fontFamily:FF, fontSize:12, fontWeight:700, color:tk.t1 }}>
+                {p.members?.length || 0} <span style={{ fontSize:10, fontWeight:500, color:tk.t2 }}>members</span>
+              </span>
+            </div>
+          </div>
+
+          {/* ── DESCRIPTION ── */}
+          {p.description && (
+            <div style={{ background:tk.mL1, border:`1px solid ${tk.mDv}`, borderRadius:11, padding:'12px 14px', marginBottom:12 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:7 }}>
+                <FileText size={11} strokeWidth={2} style={{ color:tk.t3 }} />
+                <span style={{ fontFamily:FF, fontSize:9, fontWeight:700, color:tk.t3, textTransform:'uppercase', letterSpacing:'.1em' }}>About this project</span>
+              </div>
+              <p style={{ fontFamily:FF, fontSize:12.5, color:tk.t2, margin:0, lineHeight:1.75, fontWeight:400 }}>{p.description}</p>
+            </div>
           )}
 
-          {/* Tasks section */}
-          <div>
-            <h3 className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <ListChecks size={12} /> My Tasks
-            </h3>
+          {/* ── TASKS SECTION ── */}
+          <div style={{ marginBottom:16 }}>
+
+            {/* tasks header */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <ListChecks size={14} style={{ color:st.bar }} strokeWidth={2.2} />
+                <span style={{ fontFamily:FF, fontSize:13, fontWeight:700, color:tk.t1, letterSpacing:'-0.1px' }}>My Tasks</span>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                {done > 0 && (
+                  <span style={{ fontFamily:FF, fontSize:10, fontWeight:700, padding:'2px 9px', borderRadius:20, background: d?'#052e16':'#dcfce7', color: d?'#34d399':'#059669' }}>
+                    {done} done
+                  </span>
+                )}
+                <span style={{ fontFamily:FF, fontSize:10, fontWeight:600, padding:'2px 9px', borderRadius:20, background:tk.mL1, color:tk.t3, border:`1px solid ${tk.mDv}` }}>
+                  {tasks.length} total
+                </span>
+              </div>
+            </div>
+
+            {/* tasks list */}
             {tasks.length === 0 ? (
-              <div className="text-center py-8 bg-slate-50 dark:bg-gray-800 rounded-xl border border-slate-100 dark:border-gray-700">
-                <ListChecks size={26} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                <p className="text-[13px] text-slate-400">No tasks assigned to you yet.</p>
+              <div style={{ textAlign:'center', padding:'32px 0', background:tk.mL1, borderRadius:12, border:`1.5px dashed ${tk.mDv}` }}>
+                <div style={{ width:40, height:40, borderRadius:12, background:tk.mL2, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px' }}>
+                  <ListChecks size={20} style={{ color:tk.t3 }} strokeWidth={1.5} />
+                </div>
+                <p style={{ fontFamily:FF, fontSize:13, fontWeight:600, color:tk.t2, margin:'0 0 3px' }}>No tasks assigned</p>
+                <p style={{ fontFamily:FF, fontSize:11, color:tk.t3, margin:0 }}>Tasks will appear here when assigned to you</p>
               </div>
             ) : (
-              <div className="space-y-2.5">
-                {tasks.map(task => (
-                  <TaskRow
-                    key={task._id}
-                    task={task}
-                    projectId={p._id}
-                    onTaskUpdate={onTaskUpdate}
-                    updatingTask={updatingTask}
-                  />
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {tasks.map((task, i) => (
+                  <Fade in key={task._id} timeout={60 + i * 18}>
+                    <div>
+                      <TaskRow task={task} pid={p._id} onUpd={onUpd} busy={busyId === task._id} tk={tk} d={d} />
+                    </div>
+                  </Fade>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Admin notes */}
-          {p.notes && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
-              <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-semibold mb-2">
-                <FileText size={11} /> Admin Notes
-              </div>
-              <p className="text-[13px] text-amber-800 dark:text-amber-300 leading-relaxed">{p.notes}</p>
-            </div>
-          )}
-        </div>
+        </div>{/* /padding wrapper */}
+      </div>{/* /scrollable body */}
+
+      {/* ══════════════════════════════
+          STICKY FOOTER
+      ══════════════════════════════ */}
+      <div style={{ background:tk.mL1, borderTop:`1px solid ${tk.mDv}`, padding:`12px ${px}px`, flexShrink:0 }}>
+        <button
+          onClick={onClose}
+          style={{ fontFamily:FF, width:'100%', fontSize:13, fontWeight:700, padding:'10px', borderRadius:11, background:'#101828', color:'#ffffff', border:'1.5px solid rgba(255,255,255,0.08)', cursor:'pointer', letterSpacing:'.02em', transition:'background .15s, transform .1s' }}
+          onMouseEnter={e => { e.currentTarget.style.background='#1a2e4a'; }}
+          onMouseLeave={e => { e.currentTarget.style.background='#101828'; }}
+          onMouseDown={e  => { e.currentTarget.style.transform='scale(.99)'; }}
+          onMouseUp={e    => { e.currentTarget.style.transform='scale(1)'; }}
+        >
+          Close
+        </button>
       </div>
-    </div>
+
+    </Dialog>
   );
 };
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
+/* ════════════════════════════════════════════════════════════════════════════
+   MAIN  PAGE
+══════════════════════════════════════════════════════════════════════════════ */
 export default function EmployeeProjects({ user }) {
-  const [projects,      setProjects]      = useState([]);
-  const [stats,         setStats]         = useState({});
-  const [loading,       setLoading]       = useState(true);
-  const [detailProject, setDetailProject] = useState(null);
-  const [updatingTask,  setUpdatingTask]  = useState(null);
-  const [filter,        setFilter]        = useState('All');
+  const [projects, setProjects] = useState([]);
+  const [stats,    setStats]    = useState({});
+  const [loading,  setLoading]  = useState(true);
+  const [detail,   setDetail]   = useState(null);
+  const [busyId,   setBusyId]   = useState(null);
+  const [filter,   setFilter]   = useState('All');
 
-  const fetchProjects = useCallback(async () => {
+  const d  = useDark();
+  const tk = tok(d);
+
+  const load = useCallback(async () => {
     try {
-      const [pRes, sRes] = await Promise.all([
-        projectAPI.getMyProjects(),
-        projectAPI.getMyProjectStats(),
-      ]);
-      setProjects(pRes.data.projects);
-      setStats(sRes.data.stats);
-    } catch {
-      toast.error('Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
+      const [pR, sR] = await Promise.all([projectAPI.getMyProjects(), projectAPI.getMyProjectStats()]);
+      setProjects(pR.data.projects);
+      setStats(sR.data.stats);
+    } catch { toast.error('Failed to load projects'); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
-    fetchProjects();
-    const socket = socketService.getSocket();
-    if (socket) {
-      socket.on('project:assigned', fetchProjects);
-      socket.on('project:updated',  fetchProjects);
-      socket.on('project:deleted',  fetchProjects);
-    }
-    return () => {
-      if (socket) {
-        socket.off('project:assigned', fetchProjects);
-        socket.off('project:updated',  fetchProjects);
-        socket.off('project:deleted',  fetchProjects);
-      }
-    };
-  }, [fetchProjects]);
+    load();
+    const sk = socketService.getSocket();
+    if (sk) { sk.on('project:assigned', load); sk.on('project:updated', load); sk.on('project:deleted', load); }
+    return () => { if (sk) { sk.off('project:assigned', load); sk.off('project:updated', load); sk.off('project:deleted', load); } };
+  }, [load]);
 
-  // ── FIXED: calls PUT /projects/:id/task (employee-allowed endpoint) ────────
-  const handleTaskUpdate = async (projectId, taskId, newStatus) => {
-    setUpdatingTask(taskId);
+  const onUpd = async (pid, tid, ns) => {
+    setBusyId(tid);
     try {
-      await projectAPI.updateTaskStatus(projectId, taskId, newStatus);
-      toast.success(`Task marked as ${newStatus}`);
-      const [pRes, sRes] = await Promise.all([
-        projectAPI.getMyProjects(),
-        projectAPI.getMyProjectStats(),
-      ]);
-      const freshProjects = pRes.data.projects;
-      setProjects(freshProjects);
-      setStats(sRes.data.stats);
-      // Refresh open modal
-      if (detailProject?._id === projectId) {
-        const fresh = freshProjects.find(p => p._id === projectId);
-        if (fresh) setDetailProject(fresh);
-      }
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to update task');
-    } finally {
-      setUpdatingTask(null);
-    }
+      await projectAPI.updateTaskStatus(pid, tid, ns);
+      toast.success(`Task updated to ${ns}`);
+      const [pR, sR] = await Promise.all([projectAPI.getMyProjects(), projectAPI.getMyProjectStats()]);
+      const fr = pR.data.projects;
+      setProjects(fr); setStats(sR.data.stats);
+      if (detail?._id === pid) { const fp = fr.find(x => x._id === pid); if (fp) setDetail(fp); }
+    } catch (e) { toast.error(e?.response?.data?.message || 'Update failed'); }
+    finally { setBusyId(null); }
   };
 
-  const FILTERS = ['All', 'Not Started', 'In Progress', 'Completed', 'Delayed'];
-  const filtered = filter === 'All'
-    ? projects
-    : filter === 'Delayed'
-      ? projects.filter(isProjectDelayed)
-      : projects.filter(p => p.status === filter);
+  const STAT_CFG = [
+    { label:'Total',       key:'total',      Icon:Briefcase,    grad:'linear-gradient(135deg,#101828,#1d3461)' },
+    { label:'Completed',   key:'completed',  Icon:CheckCircle,  grad:'linear-gradient(135deg,#065f46,#059669)' },
+    { label:'In Progress', key:'inProgress', Icon:Clock,        grad:'linear-gradient(135deg,#1e3a8a,#2563eb)' },
+    { label:'Delayed',     key:'delayed',    Icon:AlertTriangle,grad:'linear-gradient(135deg,#881337,#f43f5e)' },
+  ];
 
+  const FILTERS = ['All','Not Started','In Progress','Completed','Delayed'];
+  const isD     = (p) => p.status !== 'Completed' && new Date() > new Date(p.deadline);
+  const filt    = filter === 'All' ? projects : filter === 'Delayed' ? projects.filter(isD) : projects.filter(p => p.status === filter);
+
+  /* loading */
   if (loading) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-3">
-      <div className="w-9 h-9 border-2 border-[#0C2B4E] border-t-transparent rounded-full animate-spin" />
-      <p className="text-[13px] text-slate-400 font-medium">Loading projects…</p>
+    <div style={$(({ minHeight:'100vh', background:tk.page, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12 }))}>
+      <div style={{ width:28, height:28, borderRadius:'50%', border:`2.5px solid ${tk.sp}`, borderTopColor:'#101828', animation:'ep-spin .75s linear infinite' }} />
+      <p style={{ fontFamily:FF, fontSize:12, color:tk.t3, margin:0, fontWeight:500 }}>Loading projects…</p>
     </div>
   );
 
   return (
-    <>
-      <style>{`
-        @keyframes rise {
-          from { opacity:0; transform:translateY(16px); }
-          to   { opacity:1; transform:translateY(0);    }
-        }
-      `}</style>
+    <div style={$(({ minHeight:'100vh', background:tk.page, padding:'22px 24px', transition:'background .25s' }))}>
 
-      <div className="min-h-screen bg-slate-50 dark:bg-gray-950 p-4 md:p-6 space-y-6">
-
-        {/* Header */}
-        <div style={{ animation: 'rise .4s ease both' }}>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm" style={{ background: 'linear-gradient(135deg,#0c2b4e,#1a4d7a)' }}>
-              <Briefcase size={17} className="text-white" />
-            </div>
-            <h1 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">My Projects</h1>
-          </div>
-          <p className="text-[13px] text-slate-400 dark:text-slate-500 ml-12">
-            {projects.length} project{projects.length !== 1 ? 's' : ''} assigned to you
+      {/* ── page header ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:13, marginBottom:22 }}>
+        <div style={{ width:42, height:42, borderRadius:13, flexShrink:0, background:'linear-gradient(135deg,#101828,#1d3461)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 16px rgba(16,24,40,.4)' }}>
+          <Briefcase size={19} color="#fff" strokeWidth={2} />
+        </div>
+        <div>
+          <h1 style={{ fontFamily:FF, fontSize:20, fontWeight:900, color:tk.t1, margin:0, lineHeight:1, letterSpacing:'-0.5px' }}>My Projects</h1>
+          <p style={{ fontFamily:FF, fontSize:11.5, color:tk.t3, margin:'4px 0 0', fontWeight:500 }}>
+            {projects.length} project{projects.length !== 1 ? 's' : ''} assigned
           </p>
         </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {STAT_CFG.map((cfg, i) => (
-            <StatCard key={cfg.key} cfg={cfg} value={stats[cfg.key] || 0} i={i} />
-          ))}
-        </div>
-
-        {/* Filters */}
-        {projects.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-0.5" style={{ animation: 'rise .4s ease .25s both' }}>
-            {FILTERS.map(tab => {
-              const count =
-                tab === 'All'     ? projects.length
-                : tab === 'Delayed' ? projects.filter(isProjectDelayed).length
-                : projects.filter(p => p.status === tab).length;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setFilter(tab)}
-                  className={`flex-shrink-0 px-3.5 py-1.5 rounded-xl text-[12px] font-semibold transition-all border ${
-                    filter === tab
-                      ? 'bg-[#0C2B4E] text-white border-[#0C2B4E] shadow-sm'
-                      : 'bg-white dark:bg-gray-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-gray-800 hover:border-[#0C2B4E]/50 hover:text-[#0C2B4E]'
-                  }`}
-                >
-                  {tab}{tab !== 'All' && count > 0 ? ` ${count}` : ''}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Cards */}
-        {filtered.length === 0 ? (
-          projects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-                <Briefcase size={30} className="text-slate-300 dark:text-slate-600" />
-              </div>
-              <h3 className="text-[15px] font-bold text-slate-600 dark:text-slate-400 mb-1">No Projects Yet</h3>
-              <p className="text-[13px] text-slate-400 max-w-xs leading-relaxed">
-                Your admin will assign projects when they're ready.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-slate-100 dark:border-gray-800 p-10 text-center">
-              <p className="text-[13px] text-slate-400">No <strong>{filter}</strong> projects.</p>
-            </div>
-          )
-        ) : (
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((p, i) => (
-              <ProjectCard key={p._id} p={p} i={i} onOpen={setDetailProject} />
-            ))}
-          </div>
-        )}
       </div>
 
-      {detailProject && (
-        <Modal
-          p={detailProject}
-          onClose={() => setDetailProject(null)}
-          onTaskUpdate={handleTaskUpdate}
-          updatingTask={updatingTask}
-        />
+      {/* ── stat cards ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:22 }}>
+        {STAT_CFG.map(s => <StatCard key={s.key} label={s.label} value={stats[s.key] || 0} Icon={s.Icon} grad={s.grad} tk={tk} />)}
+      </div>
+
+      {/* ── filter pills ── */}
+      {projects.length > 0 && (
+        <div style={{ display:'flex', gap:6, marginBottom:18, overflowX:'auto', paddingBottom:2 }}>
+          {FILTERS.map(tab => {
+            const cnt = tab === 'All' ? projects.length : tab === 'Delayed' ? projects.filter(isD).length : projects.filter(p => p.status === tab).length;
+            const act = filter === tab;
+            return (
+              <button key={tab} onClick={() => setFilter(tab)} style={{ fontFamily:FF, padding:'5px 13px', borderRadius:8, fontSize:11.5, fontWeight:600, whiteSpace:'nowrap', cursor:'pointer', transition:'all .15s', background:act?tk.pABg:tk.pIBg, color:act?tk.pATx:tk.pITx, border:`1px solid ${act?tk.pABd:tk.pIBd}`, letterSpacing:'.01em' }}>
+                {tab}{cnt > 0 && tab !== 'All' ? ` · ${cnt}` : ''}
+              </button>
+            );
+          })}
+        </div>
       )}
-    </>
+
+      {/* ── project grid / empty state ── */}
+      {filt.length === 0 ? (
+        <div style={{ textAlign:'center', padding:'72px 0' }}>
+          <div style={{ width:52, height:52, borderRadius:16, background:tk.card, border:`1px solid ${tk.cBd}`, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>
+            <Briefcase size={22} style={{ color:tk.t3 }} strokeWidth={1.5} />
+          </div>
+          <h3 style={{ fontFamily:FF, fontSize:15, fontWeight:700, color:tk.t1, margin:'0 0 6px', letterSpacing:'-0.2px' }}>
+            {projects.length === 0 ? 'No Projects Yet' : `No ${filter} Projects`}
+          </h3>
+          <p style={{ fontFamily:FF, fontSize:12.5, color:tk.t2, margin:0, maxWidth:290, marginLeft:'auto', marginRight:'auto', lineHeight:1.65 }}>
+            {projects.length === 0 ? 'Projects assigned to you will appear here.' : 'Try selecting a different filter.'}
+          </p>
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:11 }}>
+          {filt.map((p, i) => (
+            <Fade in key={p._id} timeout={120 + i * 28}>
+              <div><ProjCard p={p} onOpen={setDetail} tk={tk} d={d} /></div>
+            </Fade>
+          ))}
+        </div>
+      )}
+
+      {/* ── modal ── */}
+      {detail && <Modal p={detail} onClose={() => setDetail(null)} onUpd={onUpd} busyId={busyId} tk={tk} d={d} />}
+    </div>
   );
 }

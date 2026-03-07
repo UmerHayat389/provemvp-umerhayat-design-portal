@@ -79,8 +79,37 @@ function App() {
     initUser();
   }, []); // runs once on mount
 
+  // ✅ Auto-logout when JWT token expires
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      // Decode token payload (middle part) without a library
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expiresAt = payload.exp * 1000; // convert to ms
+      const msUntilExpiry = expiresAt - Date.now();
+
+      if (msUntilExpiry <= 0) {
+        // Already expired
+        setUser(null);
+        return;
+      }
+
+      // Set timer to auto-logout exactly when token expires
+      const timer = setTimeout(() => {
+        setUser(null);
+      }, msUntilExpiry);
+
+      return () => clearTimeout(timer); // cleanup on unmount or user change
+    } catch {
+      // Invalid token format — clear it
+      setUser(null);
+    }
+  }, [user]); // re-runs when user logs in/out
+
   // Socket — depends only on userId string to avoid reconnect loop
-  const userId = user?._id;
+  const userId = user?._id?.toString();
   useEffect(() => {
     if (userId) {
       socketService.connect();
@@ -95,7 +124,8 @@ function App() {
       <Sidebar user={user} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Navbar user={user} setUser={setUser} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-        <main className="flex-1 p-4 overflow-auto bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+        {/* bg-* removed — page components set their own background via inline styles */}
+        <main className="flex-1 overflow-auto text-gray-900 dark:text-gray-100 transition-colors duration-200">
           {children}
         </main>
       </div>
@@ -136,19 +166,22 @@ function App() {
           }
         />
 
+        {/* Shared page wrapper — restores the p-4 + bg that <main> no longer provides */}
+        {/* EmployeeProjects is excluded — it manages its own full-bleed bg + padding */}
         {/* ── ADMIN ROUTES ── */}
-        <Route path="/admin/dashboard" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><AdminDashboard attendance={attendance} leaveRequests={leaveRequests} /></Layout></ProtectedRoute>} />
-        <Route path="/admin/attendance" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><AdminAttendance /></Layout></ProtectedRoute>} />
-        <Route path="/admin/attendance/:employeeSlug" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><AdminAttendance /></Layout></ProtectedRoute>} />
-        <Route path="/admin/leave" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><AdminLeave leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} /></Layout></ProtectedRoute>} />
-        <Route path="/admin/manageemployees" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><ManageEmployees /></Layout></ProtectedRoute>} />
-        <Route path="/admin/projects" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><AdminProjects /></Layout></ProtectedRoute>} />
+        <Route path="/admin/dashboard" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><AdminDashboard attendance={attendance} leaveRequests={leaveRequests} /></div></Layout></ProtectedRoute>} />
+        <Route path="/admin/attendance" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><AdminAttendance /></div></Layout></ProtectedRoute>} />
+        <Route path="/admin/attendance/:employeeSlug" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><AdminAttendance /></div></Layout></ProtectedRoute>} />
+        <Route path="/admin/leave" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><AdminLeave leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} /></div></Layout></ProtectedRoute>} />
+        <Route path="/admin/manageemployees" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><ManageEmployees /></div></Layout></ProtectedRoute>} />
+        <Route path="/admin/projects" element={<ProtectedRoute user={user} allowedRole="Admin"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><AdminProjects /></div></Layout></ProtectedRoute>} />
         <Route path="/admin/profile" element={<ProtectedRoute user={user} allowedRole="Admin"><ProfileLayout><ProfilePage user={user} setUser={setUser} /></ProfileLayout></ProtectedRoute>} />
 
         {/* ── EMPLOYEE ROUTES ── */}
-        <Route path="/employee/dashboard" element={<ProtectedRoute user={user} allowedRole="Employee"><Layout><EmployeeDashboard /></Layout></ProtectedRoute>} />
-        <Route path="/employee/attendance" element={<ProtectedRoute user={user} allowedRole="Employee"><Layout><EmployeeAttendance user={user} attendance={attendance} setAttendance={setAttendance} /></Layout></ProtectedRoute>} />
-        <Route path="/employee/leave" element={<ProtectedRoute user={user} allowedRole="Employee"><Layout><EmployeeLeave user={user} leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} /></Layout></ProtectedRoute>} />
+        <Route path="/employee/dashboard" element={<ProtectedRoute user={user} allowedRole="Employee"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><EmployeeDashboard /></div></Layout></ProtectedRoute>} />
+        <Route path="/employee/attendance" element={<ProtectedRoute user={user} allowedRole="Employee"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><EmployeeAttendance user={user} attendance={attendance} setAttendance={setAttendance} /></div></Layout></ProtectedRoute>} />
+        <Route path="/employee/leave" element={<ProtectedRoute user={user} allowedRole="Employee"><Layout><div className="p-4 min-h-full bg-gray-100 dark:bg-gray-950"><EmployeeLeave user={user} leaveRequests={leaveRequests} setLeaveRequests={setLeaveRequests} /></div></Layout></ProtectedRoute>} />
+        {/* EmployeeProjects — self-managed bg, no wrapper */}
         <Route path="/employee/projects" element={<ProtectedRoute user={user} allowedRole="Employee"><Layout><EmployeeProjects user={user} /></Layout></ProtectedRoute>} />
         <Route path="/employee/profile" element={<ProtectedRoute user={user} allowedRole="Employee"><ProfileLayout><ProfilePage user={user} setUser={setUser} /></ProfileLayout></ProtectedRoute>} />
 
