@@ -1,8 +1,7 @@
 // backend/middleware/authMiddleware.js
-
-const jwt = require("jsonwebtoken");
+const jwt          = require("jsonwebtoken");
 const asyncHandler = require("express-async-handler");
-const User = require("../models/user"); // ✅ FIX: correct file name
+const User         = require("../models/User"); // ✅ FIX: correct case "User" not "user"
 
 // ================================
 // Protect Middleware
@@ -10,7 +9,6 @@ const User = require("../models/user"); // ✅ FIX: correct file name
 exports.protect = asyncHandler(async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  // Check token
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     res.status(401);
     throw new Error("Not authorized, no token");
@@ -19,20 +17,15 @@ exports.protect = asyncHandler(async (req, res, next) => {
   const token = authHeader.split(" ")[1];
 
   try {
-    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Fetch full user from DB
-    const user = await User.findById(decoded.id || decoded._id).select(
-      "-password"
-    );
+    const user = await User.findById(decoded.id || decoded._id).select("-password");
 
     if (!user) {
       res.status(401);
       throw new Error("User not found");
     }
 
-    // Attach user to request
     req.user = user;
     next();
   } catch (error) {
@@ -45,9 +38,19 @@ exports.protect = asyncHandler(async (req, res, next) => {
 // ================================
 // Admin Only Middleware
 // ================================
+// ✅ FIX: was checking req.user.isAdmin which does NOT exist in User schema
+// Schema uses "role" field with values "Admin" or "Employee"
 exports.adminOnly = (req, res, next) => {
-  if (!req.user || !req.user.isAdmin) {
-    return res.status(403).json({ message: "Admin only" });
+  if (!req.user) {
+    return res.status(401).json({ message: "Not authenticated" });
   }
+
+  const role = req.user.role || "";
+  const isAdmin = role === "Admin" || role === "admin";
+
+  if (!isAdmin) {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+
   next();
 };

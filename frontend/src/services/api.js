@@ -6,6 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  timeout: 15000, // ← FIX: 15s timeout so failed requests error quickly instead of hanging forever
 });
 
 api.interceptors.request.use(
@@ -20,6 +21,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // ← FIX: add helpful console message so you can see exactly what failed
+    if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK' || !error.response) {
+      console.error(
+        '🔴 API Network Error — is your backend running on',
+        API_BASE_URL,
+        error.message
+      );
+    }
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -36,10 +45,10 @@ export const authAPI = {
 };
 
 export const userAPI = {
-  getUsers:   ()              => api.get('/users'),
-  createUser: (userData)      => api.post('/users', userData),
-  updateUser: (id, userData)  => api.put(`/users/${id}`, userData),
-  deleteUser: (id)            => api.delete(`/users/${id}`),
+  getUsers:   ()             => api.get('/users'),
+  createUser: (userData)     => api.post('/users', userData),
+  updateUser: (id, userData) => api.put(`/users/${id}`, userData),
+  deleteUser: (id)           => api.delete(`/users/${id}`),
 };
 
 export const attendanceAPI = {
@@ -63,7 +72,6 @@ export const dashboardAPI = {
   getEmployeeStats: () => api.get('/dashboard/employee'),
 };
 
-// NEW - Project API
 export const projectAPI = {
   getAllProjects:       ()           => api.get('/projects'),
   getProjectStats:     ()           => api.get('/projects/stats'),

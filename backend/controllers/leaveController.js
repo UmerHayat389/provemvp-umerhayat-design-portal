@@ -1,12 +1,15 @@
+// backend/controllers/leaveController.js
 const Leave = require("../models/Leave");
 
-// Helper — same safe userId resolution as attendanceController
-const getUserId = (req) => req.user.id || req.user._id || req.user.userId;
+// ✅ FIX: safe optional chaining so it never crashes if req.user is missing
+const getUserId = (req) => req.user?.id || req.user?._id || req.user?.userId;
 
 // POST /leaves — Employee applies for leave
 exports.applyLeave = async (req, res) => {
   try {
     const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "User identity not found." });
+
     const { leaveType, startDate, endDate, reason, description } = req.body;
 
     if (!startDate || !endDate || !reason) {
@@ -24,13 +27,13 @@ exports.applyLeave = async (req, res) => {
 
     const leave = await Leave.create({
       userId,
-      leaveType: leaveType || "Sick Leave",
-      startDate: start,
-      endDate:   end,
+      leaveType:   leaveType || "Sick Leave",
+      startDate:   start,
+      endDate:     end,
       reason,
       description: description || "",
       days,
-      status: "Pending",
+      status:      "Pending",
     });
 
     res.json({ message: "Leave application submitted.", leave });
@@ -47,7 +50,9 @@ exports.getLeaves = async (req, res) => {
       .populate("userId",     "name email department position")
       .populate("approvedBy", "name")
       .sort({ createdAt: -1 });
-    res.json(leaves);
+
+    // ✅ FIX: always return an array so frontend never crashes on response shape
+    res.json(Array.isArray(leaves) ? leaves : []);
   } catch (err) {
     console.error("Get leaves error:", err);
     res.status(500).json({ message: "Server error fetching leaves.", error: err.message });
@@ -58,8 +63,10 @@ exports.getLeaves = async (req, res) => {
 exports.getMyLeaves = async (req, res) => {
   try {
     const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "User identity not found." });
+
     const leaves = await Leave.find({ userId }).sort({ createdAt: -1 });
-    res.json(leaves);
+    res.json(Array.isArray(leaves) ? leaves : []);
   } catch (err) {
     console.error("Get my leaves error:", err);
     res.status(500).json({ message: "Server error fetching your leaves.", error: err.message });
@@ -69,6 +76,9 @@ exports.getMyLeaves = async (req, res) => {
 // PUT /leaves/:id/status — Admin approves or rejects
 exports.updateStatus = async (req, res) => {
   try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "User identity not found." });
+
     const { status } = req.body;
     const validStatuses = ["Pending", "Approved", "Rejected", "Delayed"];
 
@@ -82,7 +92,7 @@ exports.updateStatus = async (req, res) => {
     }
 
     leave.status     = status;
-    leave.approvedBy = getUserId(req);
+    leave.approvedBy = userId;
     await leave.save();
 
     res.json({ message: `Leave ${status.toLowerCase()} successfully.`, leave });

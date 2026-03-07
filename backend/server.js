@@ -12,10 +12,25 @@ dotenv.config();
 const app = express();
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // ✅ Increased limit for base64 profile photos
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: function (origin, callback) {
+      const allowed = [
+        process.env.FRONTEND_URL,
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+      ].filter(Boolean);
+      if (!origin || allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn("CORS blocked origin:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
@@ -32,12 +47,13 @@ mongoose
   });
 
 // Routes
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/users", require("./routes/userRoutes"));
+app.use("/api/auth",       require("./routes/authRoutes"));
+app.use("/api/users",      require("./routes/userRoutes"));
 app.use("/api/attendance", require("./routes/attendanceRoutes"));
-app.use("/api/leaves", require("./routes/leaveRoutes"));
-app.use("/api/dashboard", require("./routes/dashboardRoutes"));
-app.use("/api/projects", require("./routes/projectRoutes")); // Project routes
+app.use("/api/leaves",     require("./routes/leaveRoutes"));
+app.use("/api/dashboard",  require("./routes/dashboardRoutes"));
+app.use("/api/projects",   require("./routes/projectRoutes"));
+app.use("/api/profile",    require("./routes/profileRoutes")); // ✅ NEW
 
 const User = require("./models/User");
 
@@ -65,7 +81,20 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL,
+    origin: function (origin, callback) {
+      const allowed = [
+        process.env.FRONTEND_URL,
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+      ].filter(Boolean);
+      if (!origin || allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   },
 });
@@ -80,7 +109,6 @@ app.use((req, res, next) => {
 io.on("connection", (socket) => {
   console.log("✅ Socket client connected:", socket.id);
 
-  // Join a room based on userId so we can emit to specific users
   socket.on("join", (userId) => {
     socket.join(userId);
     console.log(`User ${userId} joined their room`);

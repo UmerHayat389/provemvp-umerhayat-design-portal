@@ -8,7 +8,6 @@ import {
 } from 'react-icons/fa';
 import { userAPI } from '../../services/api';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const POSITIONS = ['Admin', 'Employee'];
 
 const DEPARTMENTS = [
@@ -17,7 +16,6 @@ const DEPARTMENTS = [
   'Operations',
 ];
 
-// ── Shared input/select class ─────────────────────────────────────────────────
 const inputClass = (hasError) =>
   `w-full px-3 py-2.5 rounded-lg border-2 text-sm ${
     hasError ? 'border-red-500' : 'border-gray-300 dark:border-[#4a6080]'
@@ -27,13 +25,14 @@ const inputClass = (hasError) =>
    [&>option:hover]:bg-[#0C2B4E]/10 [&>option:checked]:bg-[#0C2B4E]/20`;
 
 const ManageEmployees = () => {
-  const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [employees, setEmployees]         = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [fetchError, setFetchError]       = useState(''); // ← FIX: track fetch errors
+  const [isModalOpen, setIsModalOpen]     = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [submitError, setSubmitError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [searchTerm, setSearchTerm]       = useState('');
+  const [submitError, setSubmitError]     = useState('');
+  const [showPassword, setShowPassword]   = useState(false);
   const [formData, setFormData] = useState({
     name:       '',
     email:      '',
@@ -44,7 +43,7 @@ const ManageEmployees = () => {
     phone:      '',
     address:    '',
     hireDate:   new Date().toISOString().split('T')[0],
-    shiftType:  'day',            // ← NEW: default to day shift
+    shiftType:  'day',
   });
   const [formErrors, setFormErrors] = useState({});
 
@@ -52,6 +51,8 @@ const ManageEmployees = () => {
 
   const fetchEmployees = async () => {
     try {
+      setLoading(true);
+      setFetchError(''); // ← FIX: clear previous error on retry
       const response = await userAPI.getUsers();
       const data = response.data;
       if (Array.isArray(data))             setEmployees(data);
@@ -61,6 +62,12 @@ const ManageEmployees = () => {
     } catch (error) {
       console.error('Error fetching employees:', error);
       setEmployees([]);
+      // ← FIX: show meaningful error so user knows backend is down
+      if (!error.response) {
+        setFetchError('Cannot connect to server. Please make sure the backend is running on port 5000.');
+      } else {
+        setFetchError(error.response?.data?.message || 'Failed to load employees. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -68,34 +75,20 @@ const ManageEmployees = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-
-    // ── Name: enforce max 15 characters while typing ──
     if (name === 'name' && value.length > 15) return;
-
-    // ── Phone: allow only digits, +, -, spaces, parentheses; max 15 chars ──
     if (name === 'phone') {
       if (value !== '' && !/^[0-9+\-\s()]*$/.test(value)) return;
       if (value.length > 15) return;
     }
-
-    // ── Address: max 100 characters ──
     if (name === 'address' && value.length > 100) return;
-
-    // ── Salary: prevent negative values from being typed ──
     if (name === 'salary' && value !== '' && Number(value) < 0) return;
-
     setFormData(prev => ({ ...prev, [name]: value }));
     if (formErrors[name]) setFormErrors(prev => ({ ...prev, [name]: '' }));
     if (submitError) setSubmitError('');
   };
 
-  /* ══════════════════════════════════════════════════════════════
-     VALIDATION
-  ══════════════════════════════════════════════════════════════ */
   const validateForm = () => {
     const errors = {};
-
-    // ── Name ──
     const name = formData.name.trim();
     if (!name) {
       errors.name = 'Name is required';
@@ -104,16 +97,12 @@ const ManageEmployees = () => {
     } else if (!/^[a-zA-Z\s'-]+$/.test(name)) {
       errors.name = 'Name can only contain letters, spaces, hyphens, and apostrophes';
     }
-
-    // ── Email ──
     const email = formData.email.trim();
     if (!email) {
       errors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       errors.email = 'Enter a valid email address (e.g. john@company.com)';
     }
-
-    // ── Password (required on create; optional on edit) ──
     if (!editingEmployee || formData.password) {
       const password = formData.password;
       if (!password) {
@@ -129,28 +118,18 @@ const ManageEmployees = () => {
         if (passwordErrors.length > 0) errors.password = passwordErrors;
       }
     }
-
-    // ── Department ──
     if (!formData.department)
       errors.department = 'Department is required';
-
-    // ── Position ──
     if (!formData.position)
       errors.position = 'Position is required';
-
-    // ── Shift Type ──
     if (!formData.shiftType)
       errors.shiftType = 'Shift type is required';
-
-    // ── Salary: must be a positive number if provided ──
     if (formData.salary !== '' && formData.salary !== undefined) {
       const sal = Number(formData.salary);
       if (isNaN(sal) || sal <= 0) {
         errors.salary = 'Salary must be a number greater than 0';
       }
     }
-
-    // ── Phone: if provided, must be valid ──
     if (formData.phone && formData.phone.trim() !== '') {
       const digits = formData.phone.replace(/[^0-9]/g, '');
       if (digits.length < 7) {
@@ -159,7 +138,6 @@ const ManageEmployees = () => {
         errors.phone = 'Phone number must have at most 15 digits';
       }
     }
-
     return errors;
   };
 
@@ -167,19 +145,20 @@ const ManageEmployees = () => {
     e.preventDefault();
     const errors = validateForm();
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
-
     try {
       const submitData = { ...formData };
       if (editingEmployee && !submitData.password) delete submitData.password;
-
       if (editingEmployee) await userAPI.updateUser(editingEmployee._id, submitData);
       else                 await userAPI.createUser(submitData);
-
       await fetchEmployees();
       closeModal();
     } catch (error) {
       console.error('Error saving employee:', error);
-      setSubmitError(error.response?.data?.message || 'Error saving employee. Please try again.');
+      if (!error.response) {
+        setSubmitError('Cannot connect to server. Please make sure the backend is running.');
+      } else {
+        setSubmitError(error.response?.data?.message || 'Error saving employee. Please try again.');
+      }
     }
   };
 
@@ -197,7 +176,7 @@ const ManageEmployees = () => {
       hireDate:   employee.hireDate
                     ? new Date(employee.hireDate).toISOString().split('T')[0]
                     : '',
-      shiftType:  employee.shiftType  || 'day',   // ← NEW
+      shiftType:  employee.shiftType  || 'day',
     });
     setFormErrors({});
     setSubmitError('');
@@ -228,7 +207,7 @@ const ManageEmployees = () => {
       phone:      '',
       address:    '',
       hireDate:   new Date().toISOString().split('T')[0],
-      shiftType:  'day',          // ← NEW
+      shiftType:  'day',
     });
     setFormErrors({});
     setSubmitError('');
@@ -259,6 +238,29 @@ const ManageEmployees = () => {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
           <span className="text-lg">Loading employees...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ← FIX: show error screen with retry button if fetch failed
+  if (fetchError) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
+            </svg>
+          </div>
+          <p className="text-red-600 dark:text-red-400 font-semibold text-base mb-1">Failed to load employees</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">{fetchError}</p>
+          <button
+            onClick={fetchEmployees}
+            className="px-5 py-2.5 bg-[#0C2B4E] dark:bg-[#1a4d7a] text-white text-sm font-semibold rounded-lg hover:bg-[#0a243d] transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -340,7 +342,6 @@ const ManageEmployees = () => {
                           {employee.position || employee.role || '—'}
                         </span>
                       </td>
-                      {/* ── Shift column ── */}
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                           employee.shiftType === 'night'
@@ -417,7 +418,6 @@ const ManageEmployees = () => {
                     }`}>
                       {employee.position || employee.role || '—'}
                     </span>
-                    {/* Shift badge on mobile */}
                     <span className={`px-2 py-1 rounded-md font-medium ${
                       employee.shiftType === 'night'
                         ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
@@ -443,11 +443,10 @@ const ManageEmployees = () => {
               </div>
             )}
           </div>
-
         </div>
       </div>
 
-      {/* ── Modal ───────────────────────────────────────────────────────────── */}
+      {/* Modal */}
       <Transition appear show={isModalOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50" onClose={closeModal}>
           <Transition.Child
@@ -607,7 +606,7 @@ const ManageEmployees = () => {
                         {formErrors.department && <p className="text-red-500 text-xs mt-1">{formErrors.department}</p>}
                       </div>
 
-                      {/* ── Shift Type — NEW FIELD ── */}
+                      {/* Shift Type */}
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           Shift Type *
@@ -629,7 +628,6 @@ const ManageEmployees = () => {
                       <div>
                         <label className="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
                           <FaDollarSign className="inline mr-1.5" />Salary
-                          <span className="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500"></span>
                         </label>
                         <input
                           type="number"
@@ -719,7 +717,6 @@ const ManageEmployees = () => {
                       </button>
                     </div>
                   </form>
-
                 </Dialog.Panel>
               </Transition.Child>
             </div>

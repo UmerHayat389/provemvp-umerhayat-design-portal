@@ -2,6 +2,7 @@
 const Attendance = require("../models/Attendance");
 const User       = require("../models/User");
 
+// ✅ FIX: safe optional chaining
 const getUserId = (req) => req.user?.id || req.user?._id || req.user?.userId;
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -15,34 +16,18 @@ function getPKTHour() {
   return new Date(utcMs + 5 * 3600000).getHours();
 }
 
-/**
- * Returns true if the current PKT hour falls inside the employee's assigned shift.
- * @param {"day"|"night"} shiftType
- */
 function isWithinShift(shiftType) {
   const h = getPKTHour();
-  if (shiftType === "night") {
-    // Night shift: 20:00 → 05:00 (next day)
-    return h >= 20 || h < 5;
-  }
-  // Default / day shift: 08:00 → 17:00
+  if (shiftType === "night") return h >= 20 || h < 5;
   return h >= 8 && h < 17;
 }
 
-/**
- * Human-readable window string for error messages.
- * @param {"day"|"night"} shiftType
- */
 function shiftWindow(shiftType) {
   return shiftType === "night"
     ? "Night Shift (08:00 PM – 05:00 AM PKT)"
     : "Day Shift (08:00 AM – 05:00 PM PKT)";
 }
 
-/**
- * "What time does the next window open?"
- * @param {"day"|"night"} shiftType
- */
 function nextShiftTime(shiftType) {
   return shiftType === "night" ? "08:00 PM PKT" : "08:00 AM PKT";
 }
@@ -55,14 +40,13 @@ exports.clockIn = async (req, res) => {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ message: "User identity not found." });
 
-    // Look up the employee's assigned shift and role
     const employee = await User.findById(userId).select("shiftType name role");
     const shift    = employee?.shiftType || "day";
     const role     = employee?.role || "Employee";
 
-    // ✅ ADMIN BYPASS: Admins can clock in anytime, skip shift check
-    const isAdmin = role === "admin" || role === "Admin";
-    
+    // ✅ FIX: check both "Admin" and "admin" for role comparison
+    const isAdmin = role === "Admin" || role === "admin";
+
     if (!isAdmin && !isWithinShift(shift)) {
       return res.status(403).json({
         message: `Clock-in is only allowed during your assigned ${shiftWindow(shift)}. Next window opens at ${nextShiftTime(shift)}.`,
@@ -81,9 +65,9 @@ exports.clockIn = async (req, res) => {
 
     const record = await Attendance.create({
       userId,
-      date:         new Date(),
-      clockIn:      new Date(),
-      status:       "Present",
+      date:          new Date(),
+      clockIn:       new Date(),
+      status:        "Present",
       markedByAdmin: false,
     });
 
@@ -102,7 +86,6 @@ exports.clockOut = async (req, res) => {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ message: "User identity not found." });
 
-    // No shift check on clock-out — employee should always be able to end their session
     const record = await Attendance.findOne({ userId, clockOut: null }).sort({ createdAt: -1 });
     if (!record) return res.status(400).json({ message: "No active clock-in found." });
 
@@ -126,7 +109,8 @@ exports.myRecords = async (req, res) => {
     if (!userId) return res.status(401).json({ message: "User identity not found." });
 
     const records = await Attendance.find({ userId }).sort({ date: -1 });
-    res.json(records);
+    // ✅ FIX: always return array
+    res.json(Array.isArray(records) ? records : []);
   } catch (err) {
     res.status(500).json({ message: "Server error fetching records.", error: err.message });
   }
@@ -140,15 +124,16 @@ exports.allRecords = async (req, res) => {
     const records = await Attendance.find()
       .populate("userId", "name email department position createdAt joiningDate shiftType")
       .sort({ date: -1 });
-    res.json(records);
+
+    // ✅ FIX: always return array so frontend never crashes
+    res.json(Array.isArray(records) ? records : []);
   } catch (err) {
     res.status(500).json({ message: "Server error fetching all records.", error: err.message });
   }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /attendance/mark-status   (Employee — today only, within their shift)
-// Body: { status: 'Present' | 'Absent' | 'Leave' }
+// POST /attendance/mark-status
 // ─────────────────────────────────────────────────────────────────────────────
 exports.markStatus = async (req, res) => {
   try {
@@ -160,13 +145,10 @@ exports.markStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status." });
     }
 
-    // Look up shift and role for this employee
     const employee = await User.findById(userId).select("shiftType role");
     const shift    = employee?.shiftType || "day";
     const role     = employee?.role || "Employee";
-
-    // ✅ ADMIN BYPASS: Admins can mark attendance anytime, skip shift check
-    const isAdmin = role === "admin" || role === "Admin";
+    const isAdmin  = role === "Admin" || role === "admin";
 
     if (!isAdmin && !isWithinShift(shift)) {
       return res.status(403).json({
@@ -199,9 +181,6 @@ exports.markStatus = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /attendance/admin-mark-status  (Admin only)
-// Body: { userId, date: 'YYYY-MM-DD', status }
-// Admin CAN mark: weekends, future dates, any date after joining
-// Admin CANNOT mark: before employee joining date
 // ─────────────────────────────────────────────────────────────────────────────
 exports.adminMarkStatus = async (req, res) => {
   try {
@@ -217,7 +196,6 @@ exports.adminMarkStatus = async (req, res) => {
     const employee = await User.findById(userId);
     if (!employee) return res.status(404).json({ message: "Employee not found." });
 
-    // Only hard block: before joining date
     const joinDate = employee.joiningDate || employee.createdAt;
     if (joinDate) {
       const jd = new Date(joinDate); jd.setHours(0, 0, 0, 0);
@@ -232,7 +210,6 @@ exports.adminMarkStatus = async (req, res) => {
     const targetDate = new Date(date); targetDate.setHours(0, 0, 0, 0);
     const nextDay    = new Date(targetDate); nextDay.setDate(nextDay.getDate() + 1);
 
-    // Deduplicate — keep most recent, delete rest
     const allForDay = await Attendance.find({ userId, date: { $gte: targetDate, $lt: nextDay } });
     if (allForDay.length > 1) {
       const sorted      = allForDay.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -240,7 +217,6 @@ exports.adminMarkStatus = async (req, res) => {
       await Attendance.deleteMany({ _id: { $in: idsToDelete } });
     }
 
-    // Pre-set clockIn to 09:00 AM when marking Present (display purposes only)
     const clockInTime =
       status === "Present"
         ? (() => { const t = new Date(targetDate); t.setHours(9, 0, 0, 0); return t; })()

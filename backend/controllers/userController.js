@@ -1,13 +1,16 @@
 // backend/controllers/userController.js
-const User = require("../models/User");
+const User   = require("../models/User");
+const bcrypt = require("bcryptjs");
 
 // ================================
-// Get all users (admin management)
+// GET /users — Employees only (no Admin)
 // ================================
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.find() // fetch all users
-      .select("_id name email role isActive");
+    // ✅ FIX: filter role "Employee" only — Admin should never appear in employee lists
+    const users = await User.find({ role: "Employee" })
+      .select("-password")
+      .sort({ createdAt: -1 });
     res.json(users);
   } catch (error) {
     console.error("Error fetching users:", error.message);
@@ -16,12 +19,12 @@ exports.getUsers = async (req, res) => {
 };
 
 // ================================
-// Get active employees (for dropdown)
+// GET /users/employees — Dropdown
 // ================================
 exports.getEmployees = async (req, res) => {
   try {
     const employees = await User.find({ role: "Employee", isActive: true })
-      .select("_id name email"); // only needed fields for dropdown
+      .select("_id name email department position shiftType");
     res.json(employees);
   } catch (error) {
     console.error("Error fetching employees:", error.message);
@@ -30,62 +33,89 @@ exports.getEmployees = async (req, res) => {
 };
 
 // ================================
-// Create new Employee
+// POST /users — Create employee
 // ================================
 exports.createUser = async (req, res) => {
   try {
-    const user = await User.create({ ...req.body, role: "Employee" });
-    res.status(201).json(user);
+    const {
+      name, email, password, department, position,
+      salary, phone, address, hireDate, shiftType,
+    } = req.body;
+
+    const user = await User.create({
+      name,
+      email,
+      password,
+      role:        "Employee",
+      department,
+      position,
+      salary,
+      phone,
+      address,
+      hireDate,
+      joiningDate: hireDate || new Date(),
+      shiftType:   shiftType || "day",
+      isActive:    true,
+    });
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    res.status(201).json(userObj);
   } catch (error) {
     console.error("Error creating user:", error.message);
-
-    // Handle duplicate email error
     if (error.code === 11000) {
       return res.status(400).json({ message: "Email already exists" });
     }
-
     res.status(500).json({ message: "Server error" });
   }
 };
 
 // ================================
-// Update user
+// PUT /users/:id — Update employee
 // ================================
 exports.updateUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
+    const updates = { ...req.body };
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    if (updates.password) {
+      const salt       = await bcrypt.genSalt(10);
+      updates.password = await bcrypt.hash(updates.password, salt);
+    } else {
+      delete updates.password;
     }
+
+    if (updates.hireDate) {
+      updates.joiningDate = updates.hireDate;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    ).select("-password");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json(user);
   } catch (error) {
     console.error("Error updating user:", error.message);
+    if (error.code === 11000) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
     res.status(500).json({ message: "Server error" });
   }
 };
 
 // ================================
-// Deactivate user
+// DELETE /users/:id — Hard delete
 // ================================
 exports.deleteUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { isActive: false },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    res.json({ message: "User deactivated" });
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Employee deleted successfully." });
   } catch (error) {
-    console.error("Error deactivating user:", error.message);
+    console.error("Error deleting user:", error.message);
     res.status(500).json({ message: "Server error" });
   }
 };
