@@ -83,22 +83,16 @@ const ProfilePage = ({ user, setUser }) => {
     setError('');
     try {
       const res = await api.put('/profile/update', form);
-      const updatedUser = res.data.user;
+      const updatedUser = res.data.user; // full user object from DB
 
-      // ✅ KEY FIX: Merge updated fields into current user and call setUser
-      // setUser in App.jsx now handles localStorage sync automatically
-      const mergedUser = {
-        ...user,
-        phone: updatedUser.phone,
-        address: updatedUser.address,
-        description: updatedUser.description,
-        linkedin: updatedUser.linkedin,
-        github: updatedUser.github,
-        profilePhoto: updatedUser.profilePhoto,
-      };
+      // Spread user first (keeps _id, name, role, email, token untouched)
+      // then overwrite with all fresh fields from DB (including profilePhoto)
+      const mergedUser = { ...user, ...updatedUser };
 
-      // This triggers App.jsx setUser → saves to localStorage → Navbar re-renders with new photo
+      // setUser (App.jsx) handles BOTH: React state update + localStorage.setItem
+      // This causes Navbar to re-render immediately with the new photo
       setUser(mergedUser);
+
       setProfile(updatedUser);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -181,10 +175,10 @@ const ProfilePage = ({ user, setUser }) => {
           </div>
 
           <div className="px-8 pb-8">
-            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 -mt-12 mb-6">
 
-              {/* Avatar */}
-              <div className="relative group w-fit">
+            {/* Avatar row — only avatar pulls up over cover, name stays in card body */}
+            <div className="flex justify-between items-start -mt-12 mb-2">
+              <div className="relative group w-fit flex-shrink-0">
                 <div className="w-24 h-24 rounded-2xl overflow-hidden ring-4 ring-white dark:ring-gray-900 shadow-lg bg-[#0C2B4E] flex items-center justify-center">
                   {previewPhoto ? (
                     <img src={previewPhoto} alt={user?.name} className="w-full h-full object-cover" />
@@ -204,23 +198,30 @@ const ProfilePage = ({ user, setUser }) => {
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
               </div>
 
-              {/* Name & Role */}
-              <div className="sm:mb-2 flex-1 sm:ml-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">{profile?.name || user?.name}</h2>
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getRoleBadgeStyle(profile?.role || user?.role)}`}>
-                    {profile?.role || user?.role}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{profile?.email || user?.email}</p>
-              </div>
-
+              {/* Remove photo — top right */}
               {previewPhoto && (
-                <button onClick={handleRemovePhoto} className="text-xs font-medium text-red-500 hover:text-red-600 transition-colors">
+                <button
+                  onClick={handleRemovePhoto}
+                  className="mt-14 text-xs font-medium text-red-500 hover:text-red-600 transition-colors"
+                >
                   Remove photo
                 </button>
               )}
             </div>
+
+            {/* Name block — fully below avatar in card body, always visible */}
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white leading-tight">
+                {profile?.name || user?.name}
+              </h2>
+              <span className={`inline-block mt-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${getRoleBadgeStyle(profile?.role || user?.role)}`}>
+                {profile?.role || user?.role}
+              </span>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5">
+                {profile?.email || user?.email}
+              </p>
+            </div>
+
 
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -270,7 +271,6 @@ const ProfilePage = ({ user, setUser }) => {
           </h3>
 
           <div className="space-y-5">
-            {/* Bio */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">About / Bio</label>
               <textarea
@@ -284,7 +284,6 @@ const ProfilePage = ({ user, setUser }) => {
               <p className="text-xs text-gray-400 dark:text-gray-600 mt-1 text-right">{form.description.length}/500</p>
             </div>
 
-            {/* Phone + Address */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Phone Number</label>
@@ -309,7 +308,6 @@ const ProfilePage = ({ user, setUser }) => {
               </div>
             </div>
 
-            {/* Social Links */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Social Links</label>
               <div className="space-y-3">

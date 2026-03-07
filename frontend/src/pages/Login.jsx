@@ -9,7 +9,7 @@ import {
   IoEyeOutline,
   IoEyeOffOutline,
 } from "react-icons/io5";
-import { authAPI } from "../services/api";
+import api, { authAPI } from "../services/api";
 import { toast } from "react-toastify"; // ✅ Toastify
 
 // ─── Reusable Error Box ───────────────────────────────────────────────────────
@@ -243,12 +243,27 @@ const Login = ({ setUser }) => {
       const response = await authAPI.login({ email, password });
       const { token, user } = response.data;
 
+      // Save token first so the next API call can attach it via interceptor
       localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
 
+      // ✅ KEY FIX: Fetch full profile right after login
+      // The login response does NOT include profilePhoto — only /profile/me does
+      // This ensures navbar shows the correct saved photo immediately, without needing a refresh
+      let fullUser = user;
+      try {
+        const profileRes = await api.get("/profile/me");
+        fullUser = profileRes.data;
+      } catch {
+        // If profile fetch fails, fall back to login user (app still works, just no photo)
+        fullUser = user;
+      }
+
+      // Save full user (with profilePhoto) to localStorage
+      localStorage.setItem("user", JSON.stringify(fullUser));
       toast.success("Login Successful ✅");
 
-      setUser(user);
+      // setUser (App.jsx wrapper) updates React state → Navbar re-renders with correct photo
+      setUser(fullUser);
     } catch (err) {
       const message =
         err.response?.data?.message || "Login failed. Please check your credentials.";

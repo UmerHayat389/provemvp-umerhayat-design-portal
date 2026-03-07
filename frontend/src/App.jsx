@@ -18,6 +18,7 @@ import Sidebar from './components/common/Sidebar';
 import Navbar from './components/common/Navbar';
 import ProtectedRoute from './routes/ProtectedRoute';
 import socketService from './services/socketService';
+import api from './services/api';
 
 function App() {
   const [user, setUserState] = useState(null);
@@ -26,32 +27,59 @@ function App() {
   const [attendance, setAttendance] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
 
-  // ✅ FIX 1: Custom setUser that always syncs localStorage
-  // This makes profile photo instantly reflect in Navbar after save
+  // ✅ setUser — always syncs React state + localStorage together
   const setUser = useCallback((newUser) => {
     if (newUser) {
       localStorage.setItem('user', JSON.stringify(newUser));
     } else {
       localStorage.removeItem('user');
+      localStorage.removeItem('token');
     }
     setUserState(newUser);
   }, []);
 
+  // ✅ On app load: if token exists, fetch FRESH user from DB (includes profilePhoto)
+  // This is the KEY fix — localStorage may have stale user without profilePhoto
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      try {
-        setUserState(JSON.parse(savedUser));
-      } catch {
-        localStorage.removeItem('user');
-      }
-    }
-    setLoadingUser(false);
-  }, []);
+    const initUser = async () => {
+      const token = localStorage.getItem('token');
 
-  // ✅ FIX 2: Socket loop — depend only on userId string, not whole user object
-  // Before: depended on `user` object → new object reference on every render = reconnect loop
-  // After: depended on `user?._id` string → only reconnects when user actually logs in/out
+      if (!token) {
+        // No token — definitely not logged in, go straight to login
+        setLoadingUser(false);
+        return;
+      }
+
+      // Token exists — fetch fresh user from DB (always includes profilePhoto)
+      // Keep loadingUser=true until this completes so Navbar never renders stale data
+      try {
+        const res = await api.get('/profile/me');
+        const freshUser = res.data;
+        localStorage.setItem('user', JSON.stringify(freshUser));
+        setUserState(freshUser);
+      } catch (err) {
+        if (err.response?.status === 401) {
+          // Token expired/invalid — clear everything
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUserState(null);
+        } else {
+          // Network error — fall back to localStorage so app still works offline
+          const savedUser = localStorage.getItem('user');
+          if (savedUser) {
+            try { setUserState(JSON.parse(savedUser)); } catch { /* ignore */ }
+          }
+        }
+      } finally {
+        setLoadingUser(false);
+      }
+    };
+
+
+    initUser();
+  }, []); // runs once on mount
+
+  // Socket — depends only on userId string to avoid reconnect loop
   const userId = user?._id;
   useEffect(() => {
     if (userId) {
@@ -60,7 +88,7 @@ function App() {
     } else {
       socketService.disconnect();
     }
-  }, [userId]); // ← only fires when userId changes, not on every render
+  }, [userId]);
 
   const Layout = ({ children }) => (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-950 transition-colors duration-200">

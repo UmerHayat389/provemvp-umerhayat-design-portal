@@ -72,15 +72,18 @@ export const dashboardAPI = {
   getEmployeeStats: () => api.get('/dashboard/employee'),
 };
 
+
+
 export const projectAPI = {
-  getAllProjects:       ()           => api.get('/projects'),
-  getProjectStats:     ()           => api.get('/projects/stats'),
-  getEmployeeProjects: (employeeId) => api.get(`/projects/employee/${employeeId}`),
-  createProject:       (data)       => api.post('/projects', data),
-  updateProject:       (id, data)   => api.put(`/projects/${id}`, data),
-  deleteProject:       (id)         => api.delete(`/projects/${id}`),
-  getMyProjects:       ()           => api.get('/projects/my-projects'),
-  getMyProjectStats:   ()           => api.get('/projects/my-stats'),
+  getAllProjects:       ()                          => api.get('/projects'),
+  getProjectStats:     ()                          => api.get('/projects/stats'),
+  getEmployeeProjects: (employeeId)                => api.get(`/projects/employee/${employeeId}`),
+  createProject:       (data)                      => api.post('/projects', data),
+  updateProject:       (id, data)                  => api.put(`/projects/${id}`, data),       // admin only
+  deleteProject:       (id)                        => api.delete(`/projects/${id}`),
+  getMyProjects:       ()                          => api.get('/projects/my-projects'),
+  getMyProjectStats:   ()                          => api.get('/projects/my-stats'),
+  updateTaskStatus:    (projectId, taskId, status) => api.put(`/projects/${projectId}/task`, { taskId, status }), // ← ADD THIS
 };
 
 export default api;
