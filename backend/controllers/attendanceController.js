@@ -1,245 +1,185 @@
 // backend/controllers/attendanceController.js
-const Attendance = require("../models/Attendance");
-const User       = require("../models/User");
+const Attendance = require('../models/Attendance');
+const emit       = require('../utils/socketEmitter');
 
-// ✅ FIX: safe optional chaining
-const getUserId = (req) => req.user?.id || req.user?._id || req.user?.userId;
+// PKT = UTC+5 — compute the 24h window for a given moment in PKT
+const PKT_OFFSET = 5 * 60 * 60 * 1000;
+const pktDayBounds = (d = new Date()) => {
+  const ms       = typeof d === 'number' ? d : d.getTime();
+  const pktMs    = ms + PKT_OFFSET;
+  const midnight = Math.floor(pktMs / 86400000) * 86400000; // PKT 00:00 in ms
+  return {
+    start: new Date(midnight - PKT_OFFSET),           // UTC equiv of PKT 00:00
+    end:   new Date(midnight - PKT_OFFSET + 86400000 - 1), // UTC equiv of PKT 23:59:59.999
+  };
+};
 
-/* ══════════════════════════════════════════════════════════════════════
-   PAKISTAN SHIFT WINDOWS  (PKT = UTC+5)
-   Day   shift : 08:00 – 17:00  PKT
-   Night shift : 20:00 – 05:00  PKT  (crosses midnight)
-══════════════════════════════════════════════════════════════════════ */
-function getPKTHour() {
-  const now   = new Date();
-  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-  return new Date(utcMs + 5 * 3600000).getHours();
-}
-
-function isWithinShift(shiftType) {
-  const h = getPKTHour();
-  if (shiftType === "night") return h >= 20 || h < 5;
-  return h >= 8 && h < 17;
-}
-
-function shiftWindow(shiftType) {
-  return shiftType === "night"
-    ? "Night Shift (08:00 PM – 05:00 AM PKT)"
-    : "Day Shift (08:00 AM – 05:00 PM PKT)";
-}
-
-function nextShiftTime(shiftType) {
-  return shiftType === "night" ? "08:00 PM PKT" : "08:00 AM PKT";
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /attendance/clock-in
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Clock In ──────────────────────────────────────────────────────────────────
 exports.clockIn = async (req, res) => {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User identity not found." });
+    const userId = req.user._id;
+    const now    = new Date();
+    const { start, end } = pktDayBounds(now);
 
-    const employee = await User.findById(userId).select("shiftType name role");
-    const shift    = employee?.shiftType || "day";
-    const role     = employee?.role || "Employee";
+    let record = await Attendance.findOne({
+      userId,
+      date: { $gte: start, $lte: end },
+    });
 
-    // ✅ FIX: check both "Admin" and "admin" for role comparison
-    const isAdmin = role === "Admin" || role === "admin";
-
-    if (!isAdmin && !isWithinShift(shift)) {
-      return res.status(403).json({
-        message: `Clock-in is only allowed during your assigned ${shiftWindow(shift)}. Next window opens at ${nextShiftTime(shift)}.`,
-      });
+    if (record?.markedByAdmin) {
+      return res.status(400).json({ message: 'Admin has already marked your attendance today.' });
     }
 
-    const today    = new Date(); today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    if (record?.clockIn) {
+      return res.status(400).json({ message: 'Already clocked in today.' });
+    }
 
-    const existing = await Attendance.findOne({
-      userId,
-      date:     { $gte: today, $lt: tomorrow },
-      clockOut: null,
-    });
-    if (existing) return res.status(400).json({ message: "You are already clocked in." });
+    if (!record) {
+      record = new Attendance({ userId, date: start, status: 'Present' });
+    }
 
-    const record = await Attendance.create({
-      userId,
-      date:          new Date(),
-      clockIn:       new Date(),
-      status:        "Present",
-      markedByAdmin: false,
-    });
-
-    res.json({ message: "Clocked in successfully.", attendance: record });
-  } catch (err) {
-    console.error("Clock in error:", err);
-    res.status(500).json({ message: "Server error during clock in.", error: err.message });
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /attendance/clock-out
-// ─────────────────────────────────────────────────────────────────────────────
-exports.clockOut = async (req, res) => {
-  try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User identity not found." });
-
-    const record = await Attendance.findOne({ userId, clockOut: null }).sort({ createdAt: -1 });
-    if (!record) return res.status(400).json({ message: "No active clock-in found." });
-
-    record.clockOut   = new Date();
-    record.totalHours = (record.clockOut - record.clockIn) / 3600000;
+    record.clockIn = now;
+    record.status  = 'Present';
     await record.save();
 
-    res.json({ message: "Clocked out successfully.", attendance: record });
+    emit(req, 'attendance:update', { userId, status: 'Present', action: 'clockIn' });
+
+    res.json({ message: 'Clocked in successfully', record });
   } catch (err) {
-    console.error("Clock out error:", err);
-    res.status(500).json({ message: "Server error during clock out.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /attendance/my-records
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Clock Out ─────────────────────────────────────────────────────────────────
+exports.clockOut = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const now    = new Date();
+    const { start, end } = pktDayBounds(now);
+
+    const record = await Attendance.findOne({
+      userId,
+      date: { $gte: start, $lte: end },
+    });
+
+    if (!record?.clockIn) {
+      return res.status(400).json({ message: 'You have not clocked in today.' });
+    }
+    if (record.clockOut) {
+      return res.status(400).json({ message: 'Already clocked out today.' });
+    }
+
+    record.clockOut   = now;
+    record.totalHours = ((now - record.clockIn) / 3_600_000).toFixed(2);
+    await record.save();
+
+    emit(req, 'attendance:update', { userId, status: 'Present', action: 'clockOut' });
+
+    res.json({ message: 'Clocked out successfully', record });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── My Records ────────────────────────────────────────────────────────────────
 exports.myRecords = async (req, res) => {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User identity not found." });
-
-    const records = await Attendance.find({ userId }).sort({ date: -1 });
-    // ✅ FIX: always return array
-    res.json(Array.isArray(records) ? records : []);
+    const records = await Attendance
+      .find({ userId: req.user._id })
+      .sort({ date: -1 })
+      .limit(60);
+    res.json(records);
   } catch (err) {
-    res.status(500).json({ message: "Server error fetching records.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /attendance/all-records  (Admin only)
-// ─────────────────────────────────────────────────────────────────────────────
+// ── All Records (Admin) ───────────────────────────────────────────────────────
 exports.allRecords = async (req, res) => {
   try {
-    const records = await Attendance.find()
-      .populate("userId", "name email department position createdAt joiningDate shiftType")
+    const records = await Attendance
+      .find()
+      .populate('userId', 'name email department')
       .sort({ date: -1 });
-
-    // ✅ FIX: always return array so frontend never crashes
-    res.json(Array.isArray(records) ? records : []);
+    res.json(records);
   } catch (err) {
-    res.status(500).json({ message: "Server error fetching all records.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /attendance/mark-status
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Employee self-mark status (PKT-aware) ─────────────────────────────────────
 exports.markStatus = async (req, res) => {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User identity not found." });
+    const { status, date } = req.body;
+    const userId     = req.user._id;
 
-    const { status } = req.body;
-    if (!["Present", "Absent", "Leave"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status." });
+    // Always work in PKT (UTC+5) — compute the target day's full 24h window in UTC
+    const pktOffset  = 5 * 60 * 60 * 1000;
+    const baseMs     = date ? new Date(date).getTime() : Date.now();
+    // PKT midnight of the target day
+    const pktMidMs   = Math.floor((baseMs + pktOffset) / 86400000) * 86400000 - pktOffset;
+    const dayStart   = new Date(pktMidMs);           // PKT 00:00 in UTC
+    const dayEnd     = new Date(pktMidMs + 86400000 - 1); // PKT 23:59:59 in UTC
+
+    let record = await Attendance.findOne({
+      userId,
+      date: { $gte: dayStart, $lte: dayEnd },
+    });
+
+    if (record?.markedByAdmin) {
+      return res.status(400).json({ message: 'Admin has already marked your attendance.' });
     }
 
-    const employee = await User.findById(userId).select("shiftType role");
-    const shift    = employee?.shiftType || "day";
-    const role     = employee?.role || "Employee";
-    const isAdmin  = role === "Admin" || role === "admin";
-
-    if (!isAdmin && !isWithinShift(shift)) {
-      return res.status(403).json({
-        message: `Attendance marking is only allowed during your assigned ${shiftWindow(shift)}. Next window opens at ${nextShiftTime(shift)}.`,
-      });
+    // Don't overwrite any existing record with auto-absent
+    if (record && status === 'Absent') {
+      return res.status(400).json({ message: 'Attendance already recorded for this day.' });
     }
 
-    const today    = new Date(); today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    if (!record) record = new Attendance({ userId, date: dayStart });
+    record.status = status;
+    await record.save();
 
-    const existing = await Attendance.findOne({ userId, date: { $gte: today, $lt: tomorrow } });
-    if (existing?.markedByAdmin) {
-      return res.status(403).json({
-        message: "Attendance for today has been set by admin and cannot be changed.",
-      });
-    }
+    emit(req, 'attendance:update', { userId, status });
 
-    const record = await Attendance.findOneAndUpdate(
-      { userId, date: { $gte: today, $lt: tomorrow } },
-      { status, markedByAdmin: false },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
-
-    res.json({ message: `Attendance marked as ${status}.`, attendance: record });
+    res.json({ message: 'Status updated', record });
   } catch (err) {
-    console.error("Mark status error:", err);
-    res.status(500).json({ message: "Server error marking attendance.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /attendance/admin-mark-status  (Admin only)
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Admin mark status ─────────────────────────────────────────────────────────
 exports.adminMarkStatus = async (req, res) => {
   try {
-    const { userId, date, status } = req.body;
+    const { userId, status, date } = req.body;
+    const { start, end } = pktDayBounds(date ? new Date(date) : new Date());
 
-    if (!userId || !date || !status) {
-      return res.status(400).json({ message: "userId, date, and status are required." });
-    }
-    if (!["Present", "Absent", "Leave"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status." });
-    }
+    let record = await Attendance.findOne({
+      userId,
+      date: { $gte: start, $lte: end },
+    });
 
-    const employee = await User.findById(userId);
-    if (!employee) return res.status(404).json({ message: "Employee not found." });
+    if (!record) record = new Attendance({ userId, date: start });
+    record.status        = status;
+    record.markedByAdmin = true;
+    await record.save();
 
-    const joinDate = employee.joiningDate || employee.createdAt;
-    if (joinDate) {
-      const jd = new Date(joinDate); jd.setHours(0, 0, 0, 0);
-      const td = new Date(date);     td.setHours(0, 0, 0, 0);
-      if (td < jd) {
-        return res.status(400).json({
-          message: `Cannot mark attendance before the employee's joining date (${jd.toDateString()}).`,
-        });
-      }
-    }
+    emit(req, 'attendance:update', { userId, status, markedByAdmin: true });
 
-    const targetDate = new Date(date); targetDate.setHours(0, 0, 0, 0);
-    const nextDay    = new Date(targetDate); nextDay.setDate(nextDay.getDate() + 1);
-
-    const allForDay = await Attendance.find({ userId, date: { $gte: targetDate, $lt: nextDay } });
-    if (allForDay.length > 1) {
-      const sorted      = allForDay.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      const idsToDelete = sorted.slice(1).map((r) => r._id);
-      await Attendance.deleteMany({ _id: { $in: idsToDelete } });
-    }
-
-    const clockInTime =
-      status === "Present"
-        ? (() => { const t = new Date(targetDate); t.setHours(9, 0, 0, 0); return t; })()
-        : null;
-
-    const record = await Attendance.findOneAndUpdate(
-      { userId, date: { $gte: targetDate, $lt: nextDay } },
-      {
-        status,
-        markedByAdmin: true,
-        clockIn:       clockInTime,
-        clockOut:      null,
-        totalHours:    0,
-        date:          targetDate,
-        userId,
-      },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
-
-    await record.populate("userId", "name email department position shiftType");
-    res.json({ message: `Attendance marked as ${status}.`, attendance: record });
+    res.json({ message: 'Attendance marked by admin', record });
   } catch (err) {
-    console.error("Admin mark error:", err);
-    res.status(500).json({ message: "Server error marking attendance.", error: err.message });
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── Repair: fix Absent records that have a clockIn (data corruption fix) ──────
+exports.repairRecords = async (req, res) => {
+  try {
+    const result = await Attendance.updateMany(
+      { clockIn: { $exists: true, $ne: null }, status: 'Absent', markedByAdmin: { $ne: true } },
+      { $set: { status: 'Present' } }
+    );
+    res.json({ message: `Repaired ${result.modifiedCount} record(s)` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };

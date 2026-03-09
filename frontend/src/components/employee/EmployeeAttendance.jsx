@@ -1,5 +1,5 @@
 // src/components/employee/EmployeeAttendance.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { FaClock, FaCalendarAlt, FaShieldAlt } from 'react-icons/fa';
@@ -10,7 +10,9 @@ import {
 import Calendar from '../common/Calendar';
 import { useTheme } from '../../context/ThemeContext';
 import { attendanceAPI } from '../../services/api';
-import { toast } from 'react-toastify';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import useSocket from '../../hooks/useSocket';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -118,10 +120,11 @@ function getShiftInfo(shiftType = 'day') {
 /* ── Format ms elapsed into HH:MM:SS ── */
 const padZ = (n) => String(n).padStart(2, '0');
 const fmtElapsed = (ms) => {
-  const h = Math.floor(ms / (1000 * 60 * 60));
-  const m = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  const s = Math.floor((ms % (1000 * 60)) / 1000);
-  return `${padZ(h)}:${padZ(m)}:${padZ(s)}`;
+  const totalMins = Math.floor(ms / 60000);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h > 0) return `${h}h ${padZ(m)}m`;
+  return `${m}m`;
 };
 
 /* ── Format ISO timestamp to 12-hr AM/PM ── */
@@ -149,6 +152,9 @@ const getTodayKey = () => {
 
 const EmployeeAttendance = ({ user }) => {
   const { isDark } = useTheme();
+
+  /* ── Socket — real-time updates ── */
+  const socket = useSocket(user?._id);
 
   /* ── The employee's assigned shift (from their profile) ── */
   const shiftType = user?.shiftType || 'day';
@@ -268,11 +274,121 @@ const EmployeeAttendance = ({ user }) => {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  /* Real-time — 15s polling */
+  /* ── One-time DB repair: fix any Absent records that have a clockIn ── */
   useEffect(() => {
-    const id = setInterval(() => fetchRecords(true), 15000);
-    return () => clearInterval(id);
-  }, [fetchRecords]);
+    import('../../services/api').then(({ default: api }) => {
+      api.post('/attendance/repair').catch(() => {});
+    });
+  }, []);
+
+  /* ── Auto-absent: runs ONCE after records first load ── */
+  const autoAbsentDone = useRef(false);
+  useEffect(() => {
+    if (recordsLoading) return;
+    if (autoAbsentDone.current) return;
+    autoAbsentDone.current = true;
+
+    const runAutoAbsent = async () => {
+      try {
+        const res  = await attendanceAPI.getMyRecords();
+        const data = Array.isArray(res.data) ? res.data
+          : Array.isArray(res.data?.records) ? res.data.records : [];
+
+        // Build map of PKT dateKey → record (so we can check clockIn)
+        const recordMap = {};
+        data.forEach(r => {
+          const d     = new Date(r.date);
+          const pktMs = d.getTime() + d.getTimezoneOffset() * 60000 + 5 * 3600000;
+          const p     = new Date(pktMs);
+          const key   = `${p.getFullYear()}-${padZ(p.getMonth()+1)}-${padZ(p.getDate())}`;
+          // keep most recent record per day
+          if (!recordMap[key] || r.markedByAdmin) recordMap[key] = r;
+        });
+
+        const pkt       = getPKTDate();
+        const y         = pkt.getFullYear();
+        const mo        = pkt.getMonth();
+        const todayDate = pkt.getDate();
+        const todayKey  = getTodayKey();
+
+        // Joining date — only mark absent from joining date onwards
+        const joiningDate = user?.createdAt ? new Date(user.createdAt) : null;
+        const joiningKey  = joiningDate
+          ? (() => {
+              const pktMs = joiningDate.getTime() + joiningDate.getTimezoneOffset() * 60000 + 5 * 3600000;
+              const p = new Date(pktMs);
+              return `${p.getFullYear()}-${padZ(p.getMonth()+1)}-${padZ(p.getDate())}`;
+            })()
+          : null;
+
+        const missingKeys = [];
+
+        for (let d = 1; d < todayDate; d++) {
+          const dow = new Date(y, mo, d).getDay();
+          if (dow === 0 || dow === 6) continue;
+          const key = `${y}-${padZ(mo + 1)}-${padZ(d)}`;
+          // Skip days before joining
+          if (joiningKey && key < joiningKey) continue;
+          const rec = recordMap[key];
+          // Skip if record exists AND it's valid (has clockIn OR was manually marked OR admin-marked)
+          if (rec && (rec.clockIn || rec.markedByAdmin)) continue;
+          // If record exists but is a wrongly-saved Absent with no clockIn — it's a candidate
+          if (!rec) missingKeys.push(key);
+        }
+
+        // Check today only if shift ended
+        const h         = pkt.getHours();
+        const isNight   = shiftType === 'night';
+        const shiftOver = isNight ? (h >= 5 && h < 20) : (h >= 17);
+        const todayDow  = pkt.getDay();
+        if (shiftOver && todayDow !== 0 && todayDow !== 6) {
+          if (joiningKey && todayKey < joiningKey) { /* skip */ }
+          else {
+            const rec = recordMap[todayKey];
+            if (!rec || (!rec.clockIn && !rec.markedByAdmin)) missingKeys.push(todayKey);
+          }
+        }
+
+        if (missingKeys.length === 0) return;
+
+        let marked = 0;
+        for (const key of missingKeys) {
+          const [ky, km, kd] = key.split('-').map(Number);
+          const safeUTC = new Date(Date.UTC(ky, km - 1, kd, 7, 0, 0)); // PKT noon
+          try {
+            await attendanceAPI.markStatus({ status: 'Absent', date: safeUTC.toISOString() });
+            marked++;
+          } catch (_) { /* already has valid record — skip */ }
+        }
+
+        if (marked > 0) {
+          await fetchRecords(true);
+          toast.warning(
+            marked === 1 && missingKeys[missingKeys.length - 1] === todayKey
+              ? "⚠️ You didn't clock in — marked as Absent for today."
+              : `⚠️ Marked ${marked} missed weekday(s) as Absent.`,
+            { position: 'top-right', autoClose: 5000 }
+          );
+        }
+      } catch (err) {
+        console.error('Auto-absent failed:', err);
+      }
+    };
+
+    runAutoAbsent();
+  }, [recordsLoading]);
+
+  /* ── Real-time socket listeners ── */
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => fetchRecords(true);
+    socket.on('attendance:update', refresh);
+    socket.on('leave:update',      refresh);
+    return () => {
+      socket.off('attendance:update', refresh);
+      socket.off('leave:update',      refresh);
+    };
+  }, [socket, fetchRecords]);
 
   /* Elapsed timer */
   useEffect(() => {
@@ -288,6 +404,11 @@ const EmployeeAttendance = ({ user }) => {
 
   /* ── Clock In ── */
   const handleClockIn = async () => {
+    const todayDow = getPKTDate().getDay();
+    if (todayDow === 0 || todayDow === 6) {
+      toast.warning('🗓️ Today is a weekend. Attendance is not required.', { position: 'top-right', autoClose: 4000 });
+      return;
+    }
     if (!shiftInfo.active) {
       const errorMsg = `Clock-in is only allowed during your ${shiftInfo.label} (${shiftInfo.window}). Next window opens at ${shiftInfo.nextTime}.`;
       setClockError(errorMsg);
@@ -349,6 +470,11 @@ const EmployeeAttendance = ({ user }) => {
 
   /* ── Mark attendance ── */
   const handleMarkAttendance = async (status) => {
+    const todayDow = getPKTDate().getDay();
+    if (todayDow === 0 || todayDow === 6) {
+      toast.warning('🗓️ Today is a weekend. Attendance is not required.', { position: 'top-right', autoClose: 4000 });
+      return;
+    }
     if (!shiftInfo.active) {
       setClockError(
         `Attendance marking is only allowed during your ${shiftInfo.label} (${shiftInfo.window}).`
@@ -361,7 +487,8 @@ const EmployeeAttendance = ({ user }) => {
       return;
     }
     try {
-      await attendanceAPI.markStatus({ status });
+      const pktMidnight = new Date(getPKTDate()); pktMidnight.setHours(0,0,0,0);
+      await attendanceAPI.markStatus({ status, date: pktMidnight.toISOString() });
       toast.success(`✓ Marked as ${status} successfully!`, { position: 'top-right', autoClose: 3000 });
       await fetchRecords(true);
     } catch (err) {
@@ -374,8 +501,10 @@ const EmployeeAttendance = ({ user }) => {
 
   /* ── Attendance map — EXCLUDE WEEKENDS unless admin-marked ── */
   const employeeAttendance = records.reduce((acc, record) => {
-    const d       = new Date(record.date);
-    const dateKey = `${d.getFullYear()}-${padZ(d.getMonth() + 1)}-${padZ(d.getDate())}`;
+    const d     = new Date(record.date);
+    const pktMs = d.getTime() + d.getTimezoneOffset() * 60000 + 5 * 3600000;
+    const pkt   = new Date(pktMs);
+    const dateKey = `${pkt.getFullYear()}-${padZ(pkt.getMonth() + 1)}-${padZ(pkt.getDate())}`;
     if (!record.markedByAdmin && isWeekend(dateKey)) return acc;
     if (!acc[dateKey] || record.markedByAdmin) {
       acc[dateKey] = {
@@ -395,6 +524,17 @@ const EmployeeAttendance = ({ user }) => {
 
   /* ── Calendar click — open detail modal ONLY for dates with records ── */
   const handleDateClick = (dateKey) => {
+    // Check if date is before joining date
+    if (user?.createdAt) {
+      const jd    = new Date(user.createdAt);
+      const jktMs = jd.getTime() + jd.getTimezoneOffset() * 60000 + 5 * 3600000;
+      const jp    = new Date(jktMs);
+      const joiningKey = `${jp.getFullYear()}-${padZ(jp.getMonth()+1)}-${padZ(jp.getDate())}`;
+      if (dateKey < joiningKey) {
+        toast.info('📅 You had not joined the company on this date.', { position: 'top-right', autoClose: 3000 });
+        return;
+      }
+    }
     const record = employeeAttendance[dateKey];
     if (record) {
       setDayModal({ dateKey, record });
@@ -486,7 +626,7 @@ const EmployeeAttendance = ({ user }) => {
     justifyContent:        'center',
     zIndex:                50,
     padding:               16,
-    background:            isDark ? 'rgba(3,8,18,0.92)' : 'rgba(10,24,42,0.65)',
+    background:            isDark ? 'rgba(3,8,18,0.55)' : 'rgba(10,24,42,0.40)',
     backdropFilter:        'blur(14px)',
     WebkitBackdropFilter:  'blur(14px)',
     overflowY:             'auto',
@@ -530,7 +670,7 @@ const EmployeeAttendance = ({ user }) => {
         onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0,0,0,0.15),0 10px 10px -5px rgba(0,0,0,0.08)'; }}
         onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -2px rgba(0,0,0,0.05)'; }}
       >
-        <h3 className="text-2xl font-bold mb-4" style={{ color: P }}>Clock In / Clock Out</h3>
+        <h3 className="text-2xl font-bold mb-4" style={{ color: isDark ? '#e2e8f0' : P }}>Clock In / Clock Out</h3>
 
         {/* ── Shift status banner ── */}
         <div style={{
@@ -582,16 +722,17 @@ const EmployeeAttendance = ({ user }) => {
         {!isClockedIn ? (
           <button
             onClick={handleClockIn}
-            disabled={clockLoading || !shiftInfo.active}
+            disabled={clockLoading}
             className="disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: shiftInfo.active ? 'linear-gradient(135deg, #16a34a, #22c55e)' : '#9ca3af',
               color: '#fff', padding: '14px 32px', borderRadius: 12, fontSize: 16, fontWeight: 700,
-              border: 'none', cursor: shiftInfo.active ? 'pointer' : 'not-allowed',
+              border: 'none', cursor: clockLoading ? 'not-allowed' : 'pointer',
               boxShadow: shiftInfo.active ? '0 4px 14px rgba(22,163,74,0.35)' : 'none',
               transition: 'all 200ms ease', fontFamily: ff,
+              opacity: todayIsWeekend ? 0.45 : 1,
             }}
-            onMouseEnter={e => { if (!clockLoading && shiftInfo.active) e.target.style.transform = 'scale(1.05)'; }}
+            onMouseEnter={e => { if (!clockLoading) e.target.style.transform = 'scale(1.05)'; }}
             onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
           >
             <FaClock className="inline mr-2" /> {clockLoading ? 'Clocking In...' : 'Clock In'}
@@ -810,7 +951,7 @@ const EmployeeAttendance = ({ user }) => {
         onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 20px 25px -5px rgba(0,0,0,0.15),0 10px 10px -5px rgba(0,0,0,0.08)'; }}
         onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.1),0 4px 6px -2px rgba(0,0,0,0.05)'; }}
       >
-        <h3 className="text-2xl font-bold mb-4" style={{ color: P }}>Mark Today's Attendance</h3>
+        <h3 className="text-2xl font-bold mb-4" style={{ color: isDark ? '#e2e8f0' : P }}>Mark Today's Attendance</h3>
 
         {/* Weekend + admin notice */}
         {todayIsWeekend && adminLockedToday && (
@@ -863,16 +1004,17 @@ const EmployeeAttendance = ({ user }) => {
                 <button
                   key={status}
                   onClick={() => handleMarkAttendance(status)}
-                  disabled={!shiftInfo.active}
+                  disabled={false}
                   className="disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
                     padding: '12px 24px', borderRadius: 11, fontSize: 14, fontWeight: 700,
                     background: sc.bg, border: `1.5px solid ${sc.bd}`, color: sc.txt,
-                    cursor: shiftInfo.active ? 'pointer' : 'not-allowed',
+                    cursor: 'pointer',
                     transition: 'all 200ms ease', fontFamily: ff,
                     display: 'inline-flex', alignItems: 'center', gap: 8,
+                    opacity: todayIsWeekend ? 0.45 : 1,
                   }}
-                  onMouseEnter={e => { if (shiftInfo.active) e.target.style.transform = 'scale(1.05)'; }}
+                  onMouseEnter={e => { e.target.style.transform = 'scale(1.05)'; }}
                   onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
                 >
                   <StatusIcon size={16} />
@@ -1183,7 +1325,10 @@ const EmployeeAttendance = ({ user }) => {
         @keyframes empPulse   { 0%,100%{opacity:1} 50%{opacity:.3} }
         @keyframes spin       { to { transform: rotate(360deg); } }
         @keyframes empSlideIn { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:none; } }
+        * { scrollbar-width: none; -ms-overflow-style: none; }
+        *::-webkit-scrollbar { display: none; }
       `}</style>
+      <ToastContainer position="top-right" autoClose={4000} hideProgressBar={false} newestOnTop closeOnClick pauseOnHover theme={isDark ? 'dark' : 'light'} />
     </div>
   );
 };

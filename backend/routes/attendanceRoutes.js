@@ -7,6 +7,7 @@ const {
   allRecords,
   markStatus,
   adminMarkStatus,
+  repairRecords,
 } = require("../controllers/attendanceController");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 
@@ -16,5 +17,6 @@ router.get("/my-records",          protect,             myRecords);
 router.get("/all-records",         protect, adminOnly,  allRecords);
 router.post("/mark-status",        protect,             markStatus);
 router.post("/admin-mark-status",  protect, adminOnly,  adminMarkStatus);
+router.post("/repair",             protect,             repairRecords);
 
 module.exports = router;

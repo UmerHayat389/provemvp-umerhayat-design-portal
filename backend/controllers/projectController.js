@@ -1,309 +1,155 @@
 // backend/controllers/projectController.js
-const Project  = require('../models/Project');
-const User     = require('../models/User');
-const mongoose = require('mongoose');
+const Project = require('../models/Project');
+const emit    = require('../utils/socketEmitter');
 
-// ── helper: attach "Delayed" status without mutating DB ───────────────────────
-const withDelayed = (p) => {
-  const obj = p.toObject ? p.toObject() : { ...p };
-  if (obj.status !== 'Completed' && obj.deadline && new Date() > new Date(obj.deadline)) {
-    obj.status = 'Delayed';
-  }
-  return obj;
-};
-
-// ── helper: compute overall project status from tasks ────────────────────────
-const computeStatus = (project) => {
-  if (project.status === 'Completed' || project.status === 'On Hold') return project.status;
-  if (project.deadline && new Date() > new Date(project.deadline)) return 'Delayed';
-  const allTasks = project.team.flatMap(m => m.tasks);
-  if (!allTasks.length) return project.status;
-  if (allTasks.every(t => t.status === 'Done')) return 'Completed';
-  if (allTasks.some(t => t.status === 'In Progress' || t.status === 'Done')) return 'In Progress';
-  return 'Not Started';
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /api/projects  —  Admin: all projects
-// ─────────────────────────────────────────────────────────────────────────────
+// ── All projects (Admin) ──────────────────────────────────────────────────────
 exports.getAllProjects = async (req, res) => {
   try {
-    const projects = await Project.find()
-      .populate('team.userId',  'name email department position shiftType')
-      .populate('assignedBy',   'name')
-      .populate('assignedTo',   'name email department position') // legacy
+    const projects = await Project
+      .find()
+      .populate('team.userId', 'name email department')
+      .populate('assignedBy', 'name')
       .sort({ createdAt: -1 });
-
-    res.json({ success: true, projects: projects.map(withDelayed) });
+    res.json({ projects });
   } catch (err) {
-    console.error('GET ALL PROJECTS ERROR:', err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /api/projects/stats  —  Admin dashboard stats
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Project stats (Admin) ─────────────────────────────────────────────────────
 exports.getProjectStats = async (req, res) => {
   try {
-    const all = await Project.find();
-    const now = new Date();
-    res.json({
-      success: true,
-      stats: {
-        total:      all.length,
-        completed:  all.filter(p => p.status === 'Completed').length,
-        delayed:    all.filter(p => p.status !== 'Completed' && new Date(p.deadline) < now).length,
-        inProgress: all.filter(p => p.status === 'In Progress').length,
-        notStarted: all.filter(p => p.status === 'Not Started').length,
-        onHold:     all.filter(p => p.status === 'On Hold').length,
-      },
-    });
+    const [total, completed, inProgress, notStarted] = await Promise.all([
+      Project.countDocuments(),
+      Project.countDocuments({ status: 'Completed'   }),
+      Project.countDocuments({ status: 'In Progress' }),
+      Project.countDocuments({ status: 'Not Started' }),
+    ]);
+    res.json({ total, completed, inProgress, notStarted });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /api/projects/employee/:id  —  Admin: projects for one employee
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Projects for a specific employee (Admin) ──────────────────────────────────
 exports.getEmployeeProjects = async (req, res) => {
   try {
-    const projects = await Project.find({ 'team.userId': req.params.id })
-      .populate('team.userId', 'name email department position')
-      .populate('assignedBy',  'name')
+    const projects = await Project
+      .find({ 'team.userId': req.params.id })
+      .populate('assignedBy', 'name')
       .sort({ createdAt: -1 });
-
-    res.json({ success: true, projects: projects.map(withDelayed) });
+    res.json({ projects });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/projects  —  Admin: create project with team + tasks
-// Body: { title, description, deadline, startDate, priority, notes,
-//         team: [{ userId, role, tasks: [{ title, description, priority, deadline }] }] }
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Create project (Admin) ────────────────────────────────────────────────────
 exports.createProject = async (req, res) => {
   try {
-    const { title, description, deadline, startDate, priority, notes, team } = req.body;
-
-    if (!title || !description || !deadline) {
-      return res.status(400).json({ success: false, message: 'title, description and deadline are required.' });
-    }
-
-    if (!team || !Array.isArray(team) || team.length === 0) {
-      return res.status(400).json({ success: false, message: 'At least one team member is required.' });
-    }
-
-    // Validate every userId
-    for (const m of team) {
-      if (!m.userId || !mongoose.Types.ObjectId.isValid(m.userId)) {
-        return res.status(400).json({ success: false, message: `Invalid userId: ${m.userId}` });
-      }
-      if (!m.role || !m.role.trim()) {
-        return res.status(400).json({ success: false, message: 'Each team member must have a role.' });
-      }
-    }
-
     const project = await Project.create({
-      title,
-      description,
-      team: team.map(m => ({
-        userId: m.userId,
-        role:   m.role.trim(),
-        tasks:  (m.tasks || []).map(t => ({
-          title:       t.title,
-          description: t.description || '',
-          priority:    t.priority    || 'Medium',
-          deadline:    t.deadline    ? new Date(t.deadline) : undefined,
-          status:      'To Do',
-        })),
-      })),
+      ...req.body,
       assignedBy: req.user._id,
-      deadline:   new Date(deadline),
-      startDate:  startDate ? new Date(startDate) : new Date(),
-      priority:   priority  || 'Medium',
-      notes:      notes     || '',
-      status:     'Not Started',
     });
 
-    const populated = await Project.findById(project._id)
-      .populate('team.userId', 'name email department position')
-      .populate('assignedBy',  'name');
-
-    // Notify each team member via socket
-    if (req.io) {
-      team.forEach(m => req.io.to(m.userId).emit('project:assigned', populated));
-      req.io.emit('project:updated', populated);
+    // Notify all team members and admin
+    const teamUserIds = (project.team ?? []).map(m => String(m.userId));
+    for (const uid of teamUserIds) {
+      req.io?.to(uid).emit('project:update', { action: 'created', projectId: project._id });
     }
+    req.io?.to('admin').emit('project:update', { action: 'created', projectId: project._id });
 
-    res.status(201).json({ success: true, project: populated });
+    res.status(201).json({ message: 'Project created', project });
   } catch (err) {
-    console.error('CREATE PROJECT ERROR:', err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PUT /api/projects/:id  —  Admin: update project info / status / team / tasks
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Update project (Admin) ────────────────────────────────────────────────────
 exports.updateProject = async (req, res) => {
   try {
-    const updates = { ...req.body };
+    const project = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!project) return res.status(404).json({ message: 'Project not found' });
 
-    if (updates.status === 'Completed') updates.completedAt = new Date();
-    if (updates.deadline) updates.deadline = new Date(updates.deadline);
-    if (updates.startDate) updates.startDate = new Date(updates.startDate);
-
-    // If team is being updated, validate and remap
-    if (updates.team && Array.isArray(updates.team)) {
-      updates.team = updates.team.map(m => ({
-        userId: m.userId,
-        role:   m.role,
-        tasks:  (m.tasks || []).map(t => ({
-          _id:         t._id,
-          title:       t.title,
-          description: t.description || '',
-          priority:    t.priority    || 'Medium',
-          deadline:    t.deadline    ? new Date(t.deadline) : undefined,
-          status:      t.status      || 'To Do',
-          completedAt: t.status === 'Done' && !t.completedAt ? new Date() : t.completedAt,
-        })),
-      }));
+    const teamUserIds = (project.team ?? []).map(m => String(m.userId));
+    for (const uid of teamUserIds) {
+      req.io?.to(uid).emit('project:update', { action: 'updated', projectId: project._id });
     }
+    req.io?.to('admin').emit('project:update', { action: 'updated', projectId: project._id });
 
-    const project = await Project.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    )
-      .populate('team.userId', 'name email department position')
-      .populate('assignedBy',  'name');
-
-    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
-
-    // Auto-compute status based on tasks
-    const autoStatus = computeStatus(project);
-    if (autoStatus !== project.status && !updates.status) {
-      project.status = autoStatus;
-      await project.save();
-    }
-
-    const result = withDelayed(project);
-
-    if (req.io) {
-      project.team.forEach(m => req.io.to(m.userId.toString()).emit('project:updated', result));
-      req.io.emit('project:updated', result);
-    }
-
-    res.json({ success: true, project: result });
+    res.json({ message: 'Project updated', project });
   } catch (err) {
-    console.error('UPDATE PROJECT ERROR:', err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PUT /api/projects/:id/task  —  Employee: update their own task status
-// Body: { memberId (userId), taskId, status }
-// ─────────────────────────────────────────────────────────────────────────────
-exports.updateTaskStatus = async (req, res) => {
-  try {
-    const { taskId, status } = req.body;
-    const userId = req.user._id.toString();
-
-    if (!['To Do', 'In Progress', 'Done', 'Blocked'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid task status.' });
-    }
-
-    const project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ success: false, message: 'Project not found.' });
-
-    const member = project.team.find(m => m.userId.toString() === userId);
-    if (!member) return res.status(403).json({ success: false, message: 'You are not part of this project.' });
-
-    const task = member.tasks.id(taskId);
-    if (!task) return res.status(404).json({ success: false, message: 'Task not found.' });
-
-    task.status      = status;
-    task.completedAt = status === 'Done' ? new Date() : undefined;
-
-    // Auto-update project status
-    project.status = computeStatus(project);
-    if (project.status === 'Completed') project.completedAt = new Date();
-
-    await project.save();
-
-    const populated = await Project.findById(project._id)
-      .populate('team.userId', 'name email department position')
-      .populate('assignedBy',  'name');
-
-    if (req.io) req.io.emit('project:updated', populated);
-
-    res.json({ success: true, project: populated });
-  } catch (err) {
-    console.error('UPDATE TASK ERROR:', err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DELETE /api/projects/:id  —  Admin
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Delete project (Admin) ────────────────────────────────────────────────────
 exports.deleteProject = async (req, res) => {
   try {
     const project = await Project.findByIdAndDelete(req.params.id);
-    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
-    if (req.io) req.io.emit('project:deleted', { projectId: req.params.id });
-    res.json({ success: true, message: 'Project deleted' });
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+
+    req.io?.to('admin').emit('project:update', { action: 'deleted', projectId: req.params.id });
+
+    res.json({ message: 'Project deleted' });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /api/projects/my-projects  —  Employee
-// ─────────────────────────────────────────────────────────────────────────────
+// ── My projects (Employee) ────────────────────────────────────────────────────
 exports.getMyProjects = async (req, res) => {
   try {
-    const userId = req.user._id.toString();
-    const projects = await Project.find({ 'team.userId': req.user._id })
-      .populate('team.userId', 'name email department position')
-      .populate('assignedBy',  'name')
+    const projects = await Project
+      .find({ 'team.userId': req.user._id })
+      .populate('assignedBy', 'name')
       .sort({ createdAt: -1 });
-
-    // Only expose this employee's slice of each project
-    const result = projects.map(p => {
-      const obj    = withDelayed(p);
-      const member = obj.team.find(m => m.userId?._id?.toString() === userId || m.userId?.toString() === userId);
-      return { ...obj, myMember: member || null };
-    });
-
-    res.json({ success: true, projects: result });
+    res.json({ projects });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /api/projects/my-stats  —  Employee
-// ─────────────────────────────────────────────────────────────────────────────
+// ── My project stats (Employee) ───────────────────────────────────────────────
 exports.getMyProjectStats = async (req, res) => {
   try {
-    const all = await Project.find({ 'team.userId': req.user._id });
-    const now = new Date();
-    res.json({
-      success: true,
-      stats: {
-        total:      all.length,
-        completed:  all.filter(p => p.status === 'Completed').length,
-        delayed:    all.filter(p => p.status !== 'Completed' && new Date(p.deadline) < now).length,
-        inProgress: all.filter(p => p.status === 'In Progress').length,
-      },
-    });
+    const userId = req.user._id;
+    const [total, completed, inProgress] = await Promise.all([
+      Project.countDocuments({ 'team.userId': userId }),
+      Project.countDocuments({ 'team.userId': userId, status: 'Completed'   }),
+      Project.countDocuments({ 'team.userId': userId, status: 'In Progress' }),
+    ]);
+    const pending = total - completed - inProgress;
+    res.json({ total, completed, inProgress, pending: Math.max(0, pending) });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── Update task status (Employee) ─────────────────────────────────────────────
+exports.updateTaskStatus = async (req, res) => {
+  try {
+    const { taskId, status } = req.body;
+    const userId  = req.user._id;
+    const project = await Project.findById(req.params.id);
+
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+
+    const member = project.team.find(m => String(m.userId) === String(userId));
+    if (!member)  return res.status(403).json({ message: 'You are not on this project' });
+
+    const task = member.tasks.id(taskId);
+    if (!task)  return res.status(404).json({ message: 'Task not found' });
+
+    task.status = status;
+    if (status === 'Done') task.completedAt = new Date();
+    await project.save();
+
+    // Emit to this employee + admin
+    emit(req, 'project:update', { userId, action: 'taskUpdate', projectId: project._id, taskId, status });
+
+    res.json({ message: 'Task status updated', project });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };

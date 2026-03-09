@@ -222,7 +222,8 @@ export default function AdminAttendance() {
     try{
       silent?setSyncing(true):setLoading(true); setErr("");
       const [eR,aR]=await Promise.all([userAPI.getUsers(),attendanceAPI.getAllRecords()]);
-      setEmployees(Array.isArray(eR.data)?eR.data:eR.data?.users??eR.data?.data??[]);
+      const allUsers=Array.isArray(eR.data)?eR.data:eR.data?.users??eR.data?.data??[];
+      setEmployees(allUsers.filter(u=>u.role!=="Admin"));
       setAllR(Array.isArray(aR.data)?aR.data:aR.data?.records??aR.data?.data??[]);
     }catch{setErr("Failed to load."); if(!silent)tError("Failed to load attendance data");}
     finally{setLoading(false);setSyncing(false);}

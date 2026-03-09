@@ -27,7 +27,7 @@ const Calendar = ({ month, year, onDateClick, attendanceData }) => {
         <div 
           key={`empty-${i}`} 
           style={{
-            minHeight: '90px',
+            height: '72px',
             borderRadius: '12px',
             opacity: 0.3,
           }}
@@ -91,7 +91,7 @@ const Calendar = ({ month, year, onDateClick, attendanceData }) => {
           key={day}
           onClick={() => handleDayClick(day)}
           style={{
-            padding: '14px',
+            padding: '8px',
             borderRadius: '12px',
             backgroundColor: statusStyle.bg,
             border: `2px solid ${isToday ? '#60a5fa' : statusStyle.border}`,
@@ -100,8 +100,9 @@ const Calendar = ({ month, year, onDateClick, attendanceData }) => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            minHeight: '90px',
+            justifyContent: 'center',
+            height: '72px',
+            overflow: 'hidden',
             position: 'relative',
             opacity: hasData ? 1 : (isWeekend ? 0.6 : 0.8),
             boxShadow: isToday 
@@ -125,7 +126,7 @@ const Calendar = ({ month, year, onDateClick, attendanceData }) => {
         >
           {/* Day number */}
           <div style={{ 
-            fontSize: '22px',
+            fontSize: '18px',
             fontWeight: '800',
             color: isToday 
               ? '#60a5fa' 
@@ -142,8 +143,8 @@ const Calendar = ({ month, year, onDateClick, attendanceData }) => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '6px',
-              marginTop: '8px',
+              gap: '2px',
+              marginTop: '3px',
             }}>
               <div style={{
                 color: statusStyle.textColor,
@@ -286,6 +287,7 @@ const Calendar = ({ month, year, onDateClick, attendanceData }) => {
         display: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
         gap: '10px',
+        alignItems: 'start',
       }}>
         {renderDays()}
       </div>

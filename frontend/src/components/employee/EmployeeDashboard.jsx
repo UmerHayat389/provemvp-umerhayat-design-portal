@@ -1,59 +1,142 @@
-import React from 'react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Calendar, CheckCircle, Clock, AlertCircle, TrendingUp, Briefcase } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Calendar, CheckCircle, Clock, AlertCircle, Briefcase } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
+import { dashboardAPI, projectAPI } from '../../services/api';
+import useSocket from '../../hooks/useSocket';
+
+// Default fallback week — chart always renders, bars show at 0-height (not grey blob)
+const DEFAULT_WEEK = [
+  { name: 'Mon', completed: 0, inProgress: 0 },
+  { name: 'Tue', completed: 0, inProgress: 0 },
+  { name: 'Wed', completed: 0, inProgress: 0 },
+  { name: 'Thu', completed: 0, inProgress: 0 },
+  { name: 'Fri', completed: 0, inProgress: 0 },
+  { name: 'Sat', completed: 0, inProgress: 0 },
+  { name: 'Sun', completed: 0, inProgress: 0 },
+];
+
+// Default task dist — pie always renders even with no task data yet
+const DEFAULT_TASK_DIST = [
+  { name: 'Completed',  value: 45, color: '#10b981' },
+  { name: 'In Progress',value: 30, color: '#f59e0b' },
+  { name: 'Pending',    value: 15, color: '#ef4444' },
+  { name: 'Review',     value: 10, color: '#8b5cf6' },
+];
+
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'Completed':   return '#10b981';
+    case 'In Progress': return '#f59e0b';
+    case 'Pending':
+    case 'Delayed':     return '#ef4444';
+    case 'On Hold':     return '#8b5cf6';
+    default:            return '#6b7280';
+  }
+};
 
 const EmployeeDashboard = () => {
   const { isDark } = useTheme();
   const textColor = isDark ? "#E5E7EB" : "#0C2B4E";
-  
-  const projectData = [
-    { name: 'Mon', completed: 4, inProgress: 2 },
-    { name: 'Tue', completed: 3, inProgress: 3 },
-    { name: 'Wed', completed: 5, inProgress: 1 },
-    { name: 'Thu', completed: 2, inProgress: 4 },
-    { name: 'Fri', completed: 6, inProgress: 2 },
-  ];
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const taskDistribution = [
-    { name: 'Completed', value: 45, color: '#10b981' },
-    { name: 'In Progress', value: 30, color: '#f59e0b' },
-    { name: 'Pending', value: 15, color: '#ef4444' },
-    { name: 'Review', value: 10, color: '#8b5cf6' },
-  ];
+  const [projectStats, setProjectStats] = useState({ total: 0, completed: 0, inProgress: 0, pending: 0 });
+  const [weeklyData,   setWeeklyData]   = useState(DEFAULT_WEEK);
+  const [taskDist,     setTaskDist]     = useState(DEFAULT_TASK_DIST);
+  const [projects,     setProjects]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
 
-  const recentProjects = [
-    { id: 1, name: 'Website Redesign', status: 'In Progress', progress: 75, deadline: '2024-02-15' },
-    { id: 2, name: 'Mobile App Development', status: 'In Progress', progress: 45, deadline: '2024-02-20' },
-    { id: 3, name: 'API Integration', status: 'Completed', progress: 100, deadline: '2024-02-08' },
-    { id: 4, name: 'Database Migration', status: 'Pending', progress: 20, deadline: '2024-02-25' },
-  ];
+  const socket = useSocket(user._id);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [dashRes, projectsRes] = await Promise.all([
+        dashboardAPI.getEmployeeStats(),
+        projectAPI.getMyProjects(),
+      ]);
+
+      const d = dashRes.data;
+
+      setProjectStats({
+        total:      d.stats?.total      ?? 0,
+        completed:  d.stats?.completed  ?? 0,
+        inProgress: d.stats?.inProgress ?? 0,
+        pending:    d.stats?.pending    ?? 0,
+      });
+
+      // Weekly — merge real values onto Mon-Sun shape so chart always renders
+      if (d.weeklyActivity?.length > 0) {
+        const merged = DEFAULT_WEEK.map(day => {
+          const real = d.weeklyActivity.find(x => x.name === day.name);
+          return real ? { ...day, ...real } : day;
+        });
+        setWeeklyData(merged);
+      }
+
+      // Task dist — use real if tasks exist, else derive from project counts
+      if (d.taskDistribution?.length > 0) {
+        const hasValues = d.taskDistribution.some(t => (t.value ?? 0) > 0);
+        if (hasValues) {
+          setTaskDist(d.taskDistribution);
+        } else if (d.stats?.total > 0) {
+          const { completed, inProgress, pending, total } = d.stats;
+          setTaskDist([
+            { name: 'Completed',  value: Math.round((completed  / total) * 100), color: '#10b981' },
+            { name: 'In Progress',value: Math.round((inProgress / total) * 100), color: '#f59e0b' },
+            { name: 'Pending',    value: Math.round((pending    / total) * 100), color: '#ef4444' },
+          ].filter(t => t.value > 0));
+        }
+        // else keep DEFAULT_TASK_DIST so pie is never empty
+      }
+
+      const raw = projectsRes.data?.projects ?? projectsRes.data ?? [];
+      setProjects(Array.isArray(raw) ? raw : []);
+
+    } catch (err) {
+      console.error('EmployeeDashboard fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => fetchData();
+    socket.on('project:update',    refresh);
+    socket.on('attendance:update', refresh);
+    socket.on('leave:update',      refresh);
+    socket.on('dashboard:refresh', refresh);
+    return () => {
+      socket.off('project:update',    refresh);
+      socket.off('attendance:update', refresh);
+      socket.off('leave:update',      refresh);
+      socket.off('dashboard:refresh', refresh);
+    };
+  }, [socket, fetchData]);
 
   const stats = [
-    { icon: Briefcase, label: 'Total Projects', value: '24', color: '#3b82f6' },
-    { icon: CheckCircle, label: 'Completed', value: '18', color: '#10b981' },
-    { icon: Clock, label: 'In Progress', value: '4', color: '#f59e0b' },
-    { icon: AlertCircle, label: 'Pending', value: '2', color: '#ef4444' },
+    { icon: Briefcase,   label: 'Total Projects', value: projectStats.total,      color: '#3b82f6' },
+    { icon: CheckCircle, label: 'Completed',      value: projectStats.completed,  color: '#10b981' },
+    { icon: Clock,       label: 'In Progress',    value: projectStats.inProgress, color: '#f59e0b' },
+    { icon: AlertCircle, label: 'Pending',        value: projectStats.pending,    color: '#ef4444' },
   ];
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'Completed': return '#10b981';
-      case 'In Progress': return '#f59e0b';
-      case 'Pending': return '#ef4444';
-      default: return '#6b7280';
-    }
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 w-full overflow-x-hidden transition-colors duration-200">
       <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
         
-        {/* Header */}
-        <div className="mb-6 sm:mb-8 md:mb-10" style={{
-          opacity: 0,
-          animation: 'fadeIn 0.5s ease-out forwards'
-        }}>
+        {/* Header — identical to original */}
+        <div className="mb-6 sm:mb-8 md:mb-10" style={{ opacity: 0, animation: 'fadeIn 0.5s ease-out forwards' }}>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2 text-gray-900 dark:text-gray-100">
             Employee Dashboard
           </h1>
@@ -123,10 +206,15 @@ const EmployeeDashboard = () => {
             </h2>
             <div className="w-full overflow-hidden">
               <ResponsiveContainer width="100%" height={250} className="sm:!h-[280px] md:!h-[300px]">
-                <BarChart data={projectData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <BarChart data={weeklyData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#f0f0f0'} />
                   <XAxis dataKey="name" stroke={isDark ? '#9CA3AF' : textColor} tick={{ fontSize: 11 }} />
-                  <YAxis stroke={isDark ? '#9CA3AF' : textColor} tick={{ fontSize: 11 }} />
+                  <YAxis
+                    stroke={isDark ? '#9CA3AF' : textColor}
+                    tick={{ fontSize: 11 }}
+                    allowDecimals={false}
+                    domain={[0, 'auto']}
+                  />
                   <Tooltip 
                     contentStyle={{ 
                       fontSize: '12px',
@@ -136,7 +224,7 @@ const EmployeeDashboard = () => {
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px', color: isDark ? '#E5E7EB' : '#111827' }} iconSize={10} />
-                  <Bar dataKey="completed" fill="#10b981" radius={[8, 8, 0, 0]} name="Completed" />
+                  <Bar dataKey="completed"  fill="#10b981" radius={[8, 8, 0, 0]} name="Completed"  />
                   <Bar dataKey="inProgress" fill="#f59e0b" radius={[8, 8, 0, 0]} name="In Progress" />
                 </BarChart>
               </ResponsiveContainer>
@@ -167,15 +255,17 @@ const EmployeeDashboard = () => {
               <ResponsiveContainer width="100%" height={200} className="sm:!h-[240px] md:!h-[260px]">
                 <PieChart>
                   <Pie
-                    data={taskDistribution}
+                    data={taskDist}
                     cx="50%"
                     cy="50%"
                     innerRadius={45}
                     outerRadius={75}
                     paddingAngle={5}
                     dataKey="value"
+                    animationBegin={0}
+                    animationDuration={800}
                   >
-                    {taskDistribution.map((entry, index) => (
+                    {taskDist.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -186,12 +276,13 @@ const EmployeeDashboard = () => {
                       borderColor: isDark ? '#374151' : '#E5E7EB',
                       color: isDark ? '#E5E7EB' : '#111827'
                     }}
+                    formatter={(value) => [`${value}%`]}
                   />
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2">
-              {taskDistribution.map((item, index) => (
+              {taskDist.map((item, index) => (
                 <div key={index} className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                     <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
@@ -206,7 +297,7 @@ const EmployeeDashboard = () => {
           </div>
         </div>
 
-        {/* Recent Projects */}
+        {/* Assigned Projects */}
         <div 
           className="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 shadow-sm border border-gray-100 dark:border-gray-700"
           style={{
@@ -227,56 +318,71 @@ const EmployeeDashboard = () => {
             Assigned Projects
           </h2>
           <div className="space-y-3 sm:space-y-4">
-            {recentProjects.map((project) => (
-              <div 
-                key={project.id} 
-                className="border border-gray-100 dark:border-gray-700 rounded-lg p-3 sm:p-4 bg-white dark:bg-gray-800"
-                style={{ transition: 'all 300ms ease' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.15), 0 4px 6px -2px rgba(0,0,0,0.08)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold mb-1.5 sm:mb-2 text-sm sm:text-base truncate text-gray-900 dark:text-gray-100">
-                      {project.name}
-                    </h3>
-                    <div className="flex flex-col xs:flex-row xs:items-center gap-1.5 xs:gap-3 sm:gap-4 text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">
-                      <span className="flex items-center gap-1 flex-shrink-0">
-                        <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
-                        <span className="truncate">Due: {project.deadline}</span>
-                      </span>
-                      <span 
-                        className="px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium inline-flex items-center self-start xs:self-auto"
+            {projects.length === 0 ? (
+              <p className="text-center text-gray-400 text-sm py-6">No projects assigned yet</p>
+            ) : (
+              projects.map((project) => {
+                const myMember  = project.team?.find(
+                  m => String(m.userId) === String(user._id) || String(m.userId?._id) === String(user._id)
+                );
+                const myTasks   = myMember?.tasks ?? [];
+                const doneTasks = myTasks.filter(t => t.status === 'Done').length;
+                const progress  = myTasks.length > 0
+                  ? Math.round((doneTasks / myTasks.length) * 100)
+                  : project.status === 'Completed' ? 100 : 0;
+
+                return (
+                  <div 
+                    key={project._id} 
+                    className="border border-gray-100 dark:border-gray-700 rounded-lg p-3 sm:p-4 bg-white dark:bg-gray-800"
+                    style={{ transition: 'all 300ms ease' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.15), 0 4px 6px -2px rgba(0,0,0,0.08)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold mb-1.5 sm:mb-2 text-sm sm:text-base truncate text-gray-900 dark:text-gray-100">
+                          {project.title}
+                        </h3>
+                        <div className="flex flex-col xs:flex-row xs:items-center gap-1.5 xs:gap-3 sm:gap-4 text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">
+                          <span className="flex items-center gap-1 flex-shrink-0">
+                            <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+                            <span className="truncate">Due: {project.deadline ? new Date(project.deadline).toLocaleDateString() : 'N/A'}</span>
+                          </span>
+                          <span 
+                            className="px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium inline-flex items-center self-start xs:self-auto"
+                            style={{ 
+                              backgroundColor: `${getStatusColor(project.status)}15`,
+                              color: getStatusColor(project.status)
+                            }}
+                          >
+                            {project.status}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-left sm:text-right flex-shrink-0">
+                        <span className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
+                          {progress}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 sm:h-2">
+                      <div 
+                        className="h-1.5 sm:h-2 rounded-full transition-all duration-500"
                         style={{ 
-                          backgroundColor: `${getStatusColor(project.status)}15`,
-                          color: getStatusColor(project.status)
+                          width: `${progress}%`,
+                          backgroundColor: getStatusColor(project.status)
                         }}
-                      >
-                        {project.status}
-                      </span>
+                      />
                     </div>
                   </div>
-                  <div className="text-left sm:text-right flex-shrink-0">
-                    <span className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
-                      {project.progress}%
-                    </span>
-                  </div>
-                </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 sm:h-2">
-                  <div 
-                    className="h-1.5 sm:h-2 rounded-full transition-all duration-300"
-                    style={{ 
-                      width: `${project.progress}%`,
-                      backgroundColor: getStatusColor(project.status)
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         </div>
       </div>

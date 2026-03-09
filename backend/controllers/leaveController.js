@@ -1,103 +1,79 @@
 // backend/controllers/leaveController.js
-const Leave = require("../models/Leave");
+const Leave = require('../models/Leave');
+const emit  = require('../utils/socketEmitter');
 
-// ✅ FIX: safe optional chaining so it never crashes if req.user is missing
-const getUserId = (req) => req.user?.id || req.user?._id || req.user?.userId;
-
-// POST /leaves — Employee applies for leave
+// ── Apply for leave (Employee) ────────────────────────────────────────────────
 exports.applyLeave = async (req, res) => {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User identity not found." });
-
-    const { leaveType, startDate, endDate, reason, description } = req.body;
-
-    if (!startDate || !endDate || !reason) {
-      return res.status(400).json({ message: "startDate, endDate, and reason are required." });
-    }
-
-    const start = new Date(startDate);
-    const end   = new Date(endDate);
-
-    if (end < start) {
-      return res.status(400).json({ message: "End date must be after start date." });
-    }
-
-    const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    const { leaveType, startDate, endDate, reason, description, days } = req.body;
 
     const leave = await Leave.create({
-      userId,
-      leaveType:   leaveType || "Sick Leave",
-      startDate:   start,
-      endDate:     end,
+      userId: req.user._id,
+      leaveType,
+      startDate,
+      endDate,
       reason,
-      description: description || "",
+      description,
       days,
-      status:      "Pending",
+      status: 'Pending',
     });
 
-    res.json({ message: "Leave application submitted.", leave });
+    // Notify admin room
+    emit(req, 'leave:update', { userId: req.user._id, action: 'apply', leaveId: leave._id });
+
+    res.status(201).json({ message: 'Leave applied successfully', leave });
   } catch (err) {
-    console.error("Apply leave error:", err);
-    res.status(500).json({ message: "Server error applying for leave.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// GET /leaves — Admin gets ALL leaves
+// ── Get all leaves (Admin) ────────────────────────────────────────────────────
 exports.getLeaves = async (req, res) => {
   try {
-    const leaves = await Leave.find()
-      .populate("userId",     "name email department position")
-      .populate("approvedBy", "name")
+    const leaves = await Leave
+      .find()
+      .populate('userId', 'name email department')
       .sort({ createdAt: -1 });
-
-    // ✅ FIX: always return an array so frontend never crashes on response shape
-    res.json(Array.isArray(leaves) ? leaves : []);
+    res.json(leaves);
   } catch (err) {
-    console.error("Get leaves error:", err);
-    res.status(500).json({ message: "Server error fetching leaves.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// GET /leaves/my-leaves — Employee gets their own leaves
+// ── Get my leaves (Employee) ──────────────────────────────────────────────────
 exports.getMyLeaves = async (req, res) => {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User identity not found." });
-
-    const leaves = await Leave.find({ userId }).sort({ createdAt: -1 });
-    res.json(Array.isArray(leaves) ? leaves : []);
+    const leaves = await Leave
+      .find({ userId: req.user._id })
+      .sort({ createdAt: -1 });
+    res.json(leaves);
   } catch (err) {
-    console.error("Get my leaves error:", err);
-    res.status(500).json({ message: "Server error fetching your leaves.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
-// PUT /leaves/:id/status — Admin approves or rejects
+// ── Update leave status (Admin) ───────────────────────────────────────────────
 exports.updateStatus = async (req, res) => {
   try {
-    const userId = getUserId(req);
-    if (!userId) return res.status(401).json({ message: "User identity not found." });
-
     const { status } = req.body;
-    const validStatuses = ["Pending", "Approved", "Rejected", "Delayed"];
-
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid status." });
-    }
-
     const leave = await Leave.findById(req.params.id);
-    if (!leave) {
-      return res.status(404).json({ message: "Leave request not found." });
-    }
+
+    if (!leave) return res.status(404).json({ message: 'Leave not found' });
 
     leave.status     = status;
-    leave.approvedBy = userId;
+    leave.approvedBy = req.user._id;
     await leave.save();
 
-    res.json({ message: `Leave ${status.toLowerCase()} successfully.`, leave });
+    // Notify both admin room and the employee who applied
+    emit(req, 'leave:update', {
+      userId:  leave.userId,
+      action:  'statusChange',
+      status,
+      leaveId: leave._id,
+    });
+
+    res.json({ message: 'Leave status updated', leave });
   } catch (err) {
-    console.error("Update status error:", err);
-    res.status(500).json({ message: "Server error updating leave status.", error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
