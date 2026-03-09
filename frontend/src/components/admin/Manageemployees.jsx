@@ -55,10 +55,19 @@ const ManageEmployees = () => {
       setFetchError(''); // ← FIX: clear previous error on retry
       const response = await userAPI.getUsers();
       const data = response.data;
-      if (Array.isArray(data))             setEmployees(data);
-      else if (Array.isArray(data?.users)) setEmployees(data.users);
-      else if (Array.isArray(data?.data))  setEmployees(data.data);
-      else { console.warn('Unexpected response shape:', data); setEmployees([]); }
+      let allUsers = [];
+      if (Array.isArray(data))             allUsers = data;
+      else if (Array.isArray(data?.users)) allUsers = data.users;
+      else if (Array.isArray(data?.data))  allUsers = data.data;
+      else { console.warn('Unexpected response shape:', data); allUsers = []; }
+      
+      // Filter to show only employees, not admins
+      const employeesOnly = allUsers.filter(user => 
+        user.role !== 'admin' && 
+        user.position !== 'Admin' &&
+        user.role !== 'Admin'
+      );
+      setEmployees(employeesOnly);
     } catch (error) {
       console.error('Error fetching employees:', error);
       setEmployees([]);
@@ -339,7 +348,10 @@ const ManageEmployees = () => {
                             ? 'bg-[#0C2B4E]/10 dark:bg-[#1a4d7a]/40 text-[#0C2B4E] dark:text-blue-300'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
                         }`}>
-                          {employee.position || employee.role || '—'}
+                          {(() => {
+                            const pos = employee.position || employee.role || '—';
+                            return pos === '—' ? pos : pos.charAt(0).toUpperCase() + pos.slice(1).toLowerCase();
+                          })()}
                         </span>
                       </td>
                       <td className="px-5 py-4">
@@ -416,7 +428,10 @@ const ManageEmployees = () => {
                         ? 'bg-[#0C2B4E]/10 dark:bg-[#1a4d7a]/40 text-[#0C2B4E] dark:text-blue-300'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
                     }`}>
-                      {employee.position || employee.role || '—'}
+                      {(() => {
+                        const pos = employee.position || employee.role || '—';
+                        return pos === '—' ? pos : pos.charAt(0).toUpperCase() + pos.slice(1).toLowerCase();
+                      })()}
                     </span>
                     <span className={`px-2 py-1 rounded-md font-medium ${
                       employee.shiftType === 'night'

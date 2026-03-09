@@ -129,9 +129,30 @@ export default function AdminProjects() {
         projectAPI.getProjectStats(),
         userAPI.getUsers(),
       ]);
-      setProjects(pRes.data?.projects || []);
-      setStats(sRes.data?.stats || {});
-      setEmployees(Array.isArray(uRes.data) ? uRes.data.filter(u => u.role === 'Employee') : []);
+      const projects = pRes.data?.projects || [];
+      setProjects(projects);
+      
+      // Calculate stats locally instead of using backend stats
+      const total = projects.length;
+      const completed = projects.filter(p => p.status === 'Completed').length;
+      const inProgress = projects.filter(p => p.status === 'In Progress').length;
+      const delayed = projects.filter(p => p.status !== 'Completed' && p.deadline && new Date() > new Date(p.deadline)).length;
+      
+      // Get employees and calculate their stats
+      const allEmployees = Array.isArray(uRes.data) ? uRes.data.filter(u => u.role === 'Employee') : [];
+      const employeeStats = allEmployees.map(emp => {
+        const empProjects = projects.filter(p => p.team?.some(m => (m.userId?._id || m.userId) === emp._id));
+        return {
+          ...emp,
+          total: empProjects.length,
+          completed: empProjects.filter(p => p.status === 'Completed').length,
+          inProgress: empProjects.filter(p => p.status === 'In Progress').length,
+          delayed: empProjects.filter(p => p.status !== 'Completed' && p.deadline && new Date() > new Date(p.deadline)).length,
+        };
+      }).filter(es => es.total > 0);
+      
+      setStats({ total, completed, inProgress, delayed, employeeStats });
+      setEmployees(allEmployees);
     } catch { toast.error('Failed to load projects'); }
     finally  { setLoading(false); }
   }, []);

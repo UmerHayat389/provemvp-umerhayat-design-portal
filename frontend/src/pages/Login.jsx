@@ -31,7 +31,7 @@ const PasswordInput = ({ placeholder, value, onChange, disabled }) => {
         value={value}
         onChange={onChange}
         disabled={disabled}
-        className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 pr-10 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
+        className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 pr-10 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-[#4d9de0] focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
       />
       <button
         type="button"
@@ -117,15 +117,15 @@ const ForgotPasswordView = ({ onBack }) => {
     <div className="animate-fadeIn">
       <button
         onClick={onBack}
-        className="flex items-center gap-1.5 text-sm text-[#0C2B4E] dark:text-blue-400 hover:underline mb-6 font-medium"
+        className="flex items-center gap-1.5 text-sm text-[#0C2B4E] dark:text-[#4d9de0] hover:underline mb-6 font-medium"
       >
         <IoArrowBack className="w-4 h-4" />
         Back to Login
       </button>
 
       <div className="flex flex-col items-center mb-5">
-        <div className="w-14 h-14 rounded-full bg-[#0C2B4E]/10 dark:bg-blue-900/30 flex items-center justify-center mb-3">
-          <IoLockClosedOutline className="w-7 h-7 text-[#0C2B4E] dark:text-blue-400" />
+        <div className="w-14 h-14 rounded-full bg-[#0C2B4E]/10 dark:bg-[#0C2B4E]/30 flex items-center justify-center mb-3">
+          <IoLockClosedOutline className="w-7 h-7 text-[#0C2B4E] dark:text-[#4d9de0]" />
         </div>
         <h2 className="text-2xl font-bold text-[#0C2B4E] dark:text-gray-100">Reset Password</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-300 text-center">
@@ -151,7 +151,7 @@ const ForgotPasswordView = ({ onBack }) => {
               setError("");
             }}
             disabled={loading}
-            className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
+            className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-[#4d9de0] focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
           />
         </div>
 
@@ -296,7 +296,7 @@ const Login = ({ setUser }) => {
             <ForgotPasswordView onBack={() => setShowForgotPassword(false)} />
           ) : (
             <div className="animate-fadeIn">
-              <IoPersonCircle className="mx-auto w-14 h-14 mb-4 text-[#0C2B4E] dark:text-blue-400 block" />
+              <IoPersonCircle className="mx-auto w-14 h-14 mb-4 text-[#0C2B4E] dark:text-[#4d9de0] block" />
               <h2 className="text-center text-2xl font-bold leading-tight text-[#0C2B4E] dark:text-gray-100">
                 Welcome to ProveMVP
               </h2>
@@ -321,7 +321,7 @@ const Login = ({ setUser }) => {
                         if (error) setError("");
                       }}
                       disabled={loading}
-                      className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
+                      className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-[#4d9de0] focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
                     />
                   </div>
                 </div>
@@ -335,7 +335,7 @@ const Login = ({ setUser }) => {
                     <button
                       type="button"
                       onClick={() => setShowForgotPassword(true)}
-                      className="text-sm font-semibold text-[#0C2B4E] dark:text-blue-400 hover:underline focus:outline-none"
+                      className="text-sm font-semibold text-[#0C2B4E] dark:text-[#4d9de0] hover:underline focus:outline-none"
                     >
                       Forgot password?
                     </button>
@@ -351,7 +351,7 @@ const Login = ({ setUser }) => {
                         if (error) setError("");
                       }}
                       disabled={loading}
-                      className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 pr-10 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
+                      className="flex h-11 w-full rounded-md border border-gray-300 dark:border-[#4a6080] bg-white dark:bg-[#2a3a4f] px-3 py-2 pr-10 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-[#0C2B4E] dark:focus:ring-[#4d9de0] focus:ring-offset-1 disabled:opacity-50 text-gray-900 dark:text-gray-100"
                     />
                     <button
                       type="button"

@@ -83,7 +83,7 @@ const tok = (d) => ({
   /* cards */
   card:  d ? '#121c2e' : '#ffffff',
   cBd:   d ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.08)',
-  cHBd:  d ? '#3b82f6' : '#101828',
+  cHBd:  d ? '#1d3461' : '#101828',
   cSh:   d ? '0 12px 40px rgba(0,0,0,.6)' : '0 8px 32px rgba(16,24,40,.1)',
   /* surfaces */
   sf:    d ? '#182035' : '#f8fafc',
@@ -96,7 +96,7 @@ const tok = (d) => ({
   tr:    d ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
   sp:    d ? 'rgba(255,255,255,0.12)' : '#e2e8f0',
   /* filter pills */
-  pABg:'#101828', pATx:'#fff', pABd:'rgba(59,130,246,0.4)',
+  pABg:'#101828', pATx:'#fff', pABd:'rgba(29,52,97,0.4)',
   pIBg: d ? 'rgba(255,255,255,0.05)' : '#ffffff',
   pITx: d ? '#6b7280' : '#64748b',
   pIBd: d ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.09)',
@@ -482,8 +482,16 @@ export default function EmployeeProjects({ user }) {
   const load = useCallback(async () => {
     try {
       const [pR, sR] = await Promise.all([projectAPI.getMyProjects(), projectAPI.getMyProjectStats()]);
-      setProjects(pR.data.projects);
-      setStats(sR.data.stats);
+      const projects = pR.data.projects || [];
+      setProjects(projects);
+      
+      // Calculate stats locally to avoid undefined errors
+      const total = projects.length;
+      const completed = projects.filter(p => p.status === 'Completed').length;
+      const inProgress = projects.filter(p => p.status === 'In Progress').length;
+      const delayed = projects.filter(p => p.status !== 'Completed' && p.deadline && new Date() > new Date(p.deadline)).length;
+      
+      setStats({ total, completed, inProgress, delayed });
     } catch { toast.error('Failed to load projects'); }
     finally { setLoading(false); }
   }, []);
@@ -501,8 +509,16 @@ export default function EmployeeProjects({ user }) {
       await projectAPI.updateTaskStatus(pid, tid, ns);
       toast.success(`Task updated to ${ns}`);
       const [pR, sR] = await Promise.all([projectAPI.getMyProjects(), projectAPI.getMyProjectStats()]);
-      const fr = pR.data.projects;
-      setProjects(fr); setStats(sR.data.stats);
+      const fr = pR.data.projects || [];
+      setProjects(fr);
+      
+      // Calculate stats locally
+      const total = fr.length;
+      const completed = fr.filter(p => p.status === 'Completed').length;
+      const inProgress = fr.filter(p => p.status === 'In Progress').length;
+      const delayed = fr.filter(p => p.status !== 'Completed' && p.deadline && new Date() > new Date(p.deadline)).length;
+      
+      setStats({ total, completed, inProgress, delayed });
       if (detail?._id === pid) { const fp = fr.find(x => x._id === pid); if (fp) setDetail(fp); }
     } catch (e) { toast.error(e?.response?.data?.message || 'Update failed'); }
     finally { setBusyId(null); }
@@ -545,7 +561,7 @@ export default function EmployeeProjects({ user }) {
 
       {/* ── stat cards ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:22 }}>
-        {STAT_CFG.map(s => <StatCard key={s.key} label={s.label} value={stats[s.key] || 0} Icon={s.Icon} grad={s.grad} tk={tk} />)}
+        {STAT_CFG.map(s => <StatCard key={s.key} label={s.label} value={(stats && stats[s.key]) || 0} Icon={s.Icon} grad={s.grad} tk={tk} />)}
       </div>
 
       {/* ── filter pills ── */}
