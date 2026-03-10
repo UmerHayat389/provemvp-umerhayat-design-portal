@@ -121,6 +121,7 @@ export default function AdminProjects() {
   const [expandedEmp,      setExpandedEmp]      = useState(null);
   const [activeTaskMember, setActiveTaskMember] = useState(null);
   const [roleInput,        setRoleInput]        = useState({});
+  const [taskModal,        setTaskModal]        = useState({ open: false, memberIdx: null, taskIdx: null, task: emptyTask() });
 
   const fetchAll = useCallback(async () => {
     try {
@@ -181,10 +182,45 @@ export default function AdminProjects() {
 
   const addMember    = ()       => setForm(f => ({ ...f, team:[...f.team, { userId:'', role:'', tasks:[] }] }));
   const removeMember = (i)      => setForm(f => ({ ...f, team:f.team.filter((_,j) => j !== i) }));
-  const updateMember = (i,k,v)  => setForm(f => ({ ...f, team:f.team.map((m,j) => j===i ? {...m,[k]:v} : m) }));
+  const updateMember = (i,k,v)  => {
+    if (k === 'userId') {
+      // Auto-populate role from employee's position or department
+      const emp = employees.find(e => e._id === v);
+      const role = emp?.position || emp?.department || '';
+      setForm(f => ({ ...f, team:f.team.map((m,j) => j===i ? {...m, userId:v, role} : m) }));
+    } else {
+      setForm(f => ({ ...f, team:f.team.map((m,j) => j===i ? {...m,[k]:v} : m) }));
+    }
+  };
   const addTask      = (mi)     => setForm(f => ({ ...f, team:f.team.map((m,i) => i===mi ? {...m,tasks:[...m.tasks,emptyTask()]} : m) }));
   const removeTask   = (mi,ti)  => setForm(f => ({ ...f, team:f.team.map((m,i) => i===mi ? {...m,tasks:m.tasks.filter((_,j)=>j!==ti)} : m) }));
   const updateTask   = (mi,ti,k,v) => setForm(f => ({ ...f, team:f.team.map((m,i) => i===mi ? {...m,tasks:m.tasks.map((t,j)=>j===ti?{...t,[k]:v}:t)} : m) }));
+  
+  // Task modal functions
+  const openTaskModal = (memberIdx, taskIdx = null) => {
+    const task = taskIdx !== null ? form.team[memberIdx].tasks[taskIdx] : emptyTask();
+    setTaskModal({ open: true, memberIdx, taskIdx, task: {...task} });
+  };
+  const closeTaskModal = () => setTaskModal({ open: false, memberIdx: null, taskIdx: null, task: emptyTask() });
+  const saveTaskFromModal = () => {
+    const { memberIdx, taskIdx, task } = taskModal;
+    if (!task.title.trim()) return toast.error('Task title is required');
+    
+    setForm(f => ({
+      ...f,
+      team: f.team.map((m, i) => {
+        if (i !== memberIdx) return m;
+        if (taskIdx !== null) {
+          // Edit existing task
+          return { ...m, tasks: m.tasks.map((t, j) => j === taskIdx ? task : t) };
+        } else {
+          // Add new task
+          return { ...m, tasks: [...m.tasks, task] };
+        }
+      })
+    }));
+    closeTaskModal();
+  };
 
   const handleSubmit = async () => {
     if (!form.title.trim())        return toast.error('Project title is required');
@@ -193,7 +229,6 @@ export default function AdminProjects() {
     if (!form.team.length)         return toast.error('Add at least one team member');
     for (const m of form.team) {
       if (!m.userId)      return toast.error('Select an employee for each team member');
-      if (!m.role.trim()) return toast.error('Enter a role for each team member');
     }
     const ids = form.team.map(m => m.userId);
     if (new Set(ids).size !== ids.length) return toast.error('Each employee can only be added once');
@@ -344,24 +379,6 @@ export default function AdminProjects() {
                           </select>
                         </div>
 
-                        <div className="flex-1 min-w-0 relative">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Role *</p>
-                          <input value={member.role} onChange={e => updateMember(mIdx,'role',e.target.value)}
-                            onFocus={() => setRoleInput(r => ({...r,[mIdx]:true}))}
-                            onBlur={() => setTimeout(() => setRoleInput(r => ({...r,[mIdx]:false})), 150)}
-                            placeholder="e.g. Frontend Developer" className={fc}/>
-                          {roleInput[mIdx] && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-30 overflow-hidden ap-in">
-                              {ROLE_SUGGESTIONS.filter(r => r.toLowerCase().includes(member.role.toLowerCase())).map(r => (
-                                <button key={r} type="button" onMouseDown={() => updateMember(mIdx,'role',r)}
-                                  className="w-full text-left px-3.5 py-2.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b border-gray-50 dark:border-gray-700/50 last:border-0 transition-colors">
-                                  {r}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
                         <div className="flex items-end gap-1.5">
                           <button type="button" onClick={() => setActiveTaskMember(isTaskOpen ? null : mIdx)}
                             className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-semibold border-2 transition-all whitespace-nowrap ${isTaskOpen ? 'bg-[#0C2B4E] text-white border-[#0C2B4E]' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-[#0C2B4E]/40'}`}>
@@ -392,7 +409,7 @@ export default function AdminProjects() {
                       <div className="p-3.5 border-t border-gray-100 dark:border-gray-800 ap-up">
                         <div className="flex items-center justify-between mb-3">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Tasks · {emp?.name || 'Member'}</p>
-                          <button type="button" onClick={() => addTask(mIdx)} className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-[#0C2B4E] dark:text-[#4d9de0] border border-[#0C2B4E]/20 dark:border-[#4d9de0]/30 rounded-lg hover:bg-[#0C2B4E]/5 transition-colors">
+                          <button type="button" onClick={() => openTaskModal(mIdx)} className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-white bg-[#0C2B4E] rounded-lg hover:bg-[#0a243d] transition-colors">
                             <Plus size={11}/> Add Task
                           </button>
                         </div>
@@ -403,27 +420,25 @@ export default function AdminProjects() {
                         ) : (
                           <div className="space-y-2">
                             {member.tasks.map((task, tIdx) => (
-                              <div key={tIdx} className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3 border border-gray-100 dark:border-gray-700/50">
-                                <div className="flex items-start gap-2 mb-2">
-                                  <input value={task.title} onChange={e => updateTask(mIdx,tIdx,'title',e.target.value)} placeholder="Task title *"
-                                    className="flex-1 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-xs font-medium text-gray-900 dark:text-white focus:outline-none focus:border-[#0C2B4E] transition-colors"/>
-                                  <button type="button" onClick={() => removeTask(mIdx,tIdx)} className="p-1.5 text-gray-300 hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all flex-shrink-0"><X size={12}/></button>
+                              <div key={tIdx} className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3 border border-gray-100 dark:border-gray-700/50 group hover:border-[#0C2B4E]/30 transition-all">
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-gray-900 dark:text-white line-clamp-1">{task.title || 'Untitled Task'}</p>
+                                    {task.description && <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{task.description}</p>}
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button type="button" onClick={() => openTaskModal(mIdx, tIdx)} className="p-1.5 text-gray-400 hover:text-[#0C2B4E] rounded-lg hover:bg-[#0C2B4E]/10 transition-all opacity-0 group-hover:opacity-100">
+                                      <Edit2 size={11}/>
+                                    </button>
+                                    <button type="button" onClick={() => removeTask(mIdx,tIdx)} className="p-1.5 text-gray-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all opacity-0 group-hover:opacity-100">
+                                      <X size={11}/>
+                                    </button>
+                                  </div>
                                 </div>
-                                <textarea value={task.description} onChange={e => updateTask(mIdx,tIdx,'description',e.target.value)} placeholder="Description (optional)" rows={2}
-                                  className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-[11px] text-gray-600 dark:text-gray-300 resize-none focus:outline-none focus:border-[#0C2B4E] mb-2 transition-colors"/>
-                                <div className="flex flex-wrap gap-1.5">
-                                  <select value={task.priority} onChange={e => updateTask(mIdx,tIdx,'priority',e.target.value)} style={{colorScheme:'dark'}}
-                                    className="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-[11px] text-gray-600 dark:text-gray-300 focus:outline-none">
-                                    {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                                  </select>
-                                  <input type="date" value={task.deadline} onChange={e => updateTask(mIdx,tIdx,'deadline',e.target.value)} style={{colorScheme:'dark'}}
-                                    className="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-[11px] text-gray-600 dark:text-gray-300 focus:outline-none"/>
-                                  {editProject && (
-                                    <select value={task.status} onChange={e => updateTask(mIdx,tIdx,'status',e.target.value)} style={{colorScheme:'dark'}}
-                                      className="px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-[11px] text-gray-600 dark:text-gray-300 focus:outline-none">
-                                      {TASK_STATUSES.map(s => <option key={s}>{s}</option>)}
-                                    </select>
-                                  )}
+                                <div className="flex flex-wrap gap-1.5 text-[10px]">
+                                  <span className={`px-2 py-0.5 rounded-md font-semibold ${priorityConfig(task.priority).bg} ${priorityConfig(task.priority).color}`}>{task.priority}</span>
+                                  {task.deadline && <span className="px-2 py-0.5 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{fmtDate(task.deadline)}</span>}
+                                  {editProject && <span className={`px-2 py-0.5 rounded-md font-semibold ${statusConfig(task.status).pill}`}>{task.status}</span>}
                                 </div>
                               </div>
                             ))}
@@ -454,6 +469,97 @@ export default function AdminProjects() {
             </button>
           </div>
         </div>
+
+        {/* Task Modal */}
+        {taskModal.open && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 ap-in" onClick={closeTaskModal}>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl max-w-md w-full ap-up" onClick={e => e.stopPropagation()}>
+              <div className="p-5 border-b border-gray-100 dark:border-gray-800">
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">{taskModal.taskIdx !== null ? 'Edit Task' : 'Add New Task'}</h3>
+              </div>
+              
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">Task Title *</label>
+                  <input 
+                    value={taskModal.task.title} 
+                    onChange={e => setTaskModal(m => ({ ...m, task: { ...m.task, title: e.target.value } }))}
+                    placeholder="Enter task title"
+                    className={fc}
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
+                  <textarea 
+                    value={taskModal.task.description} 
+                    onChange={e => setTaskModal(m => ({ ...m, task: { ...m.task, description: e.target.value } }))}
+                    placeholder="Enter task description (optional)"
+                    rows={3}
+                    className={`${fc} resize-none`}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">Priority</label>
+                    <select 
+                      value={taskModal.task.priority} 
+                      onChange={e => setTaskModal(m => ({ ...m, task: { ...m.task, priority: e.target.value } }))}
+                      className={fc}
+                      style={{colorScheme:'dark'}}
+                    >
+                      {PRIORITIES.map(p => <option key={p}>{p}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">Deadline</label>
+                    <input 
+                      type="date" 
+                      value={taskModal.task.deadline} 
+                      onChange={e => setTaskModal(m => ({ ...m, task: { ...m.task, deadline: e.target.value } }))}
+                      className={fc}
+                      style={{colorScheme:'dark'}}
+                    />
+                  </div>
+                </div>
+
+                {editProject && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">Status</label>
+                    <select 
+                      value={taskModal.task.status || 'To Do'} 
+                      onChange={e => setTaskModal(m => ({ ...m, task: { ...m.task, status: e.target.value } }))}
+                      className={fc}
+                      style={{colorScheme:'dark'}}
+                    >
+                      {TASK_STATUSES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-5 border-t border-gray-100 dark:border-gray-800 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={closeTaskModal}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  onClick={saveTaskFromModal}
+                  className="ap-btn flex-1 py-2.5 rounded-xl font-bold text-sm text-white"
+                >
+                  {taskModal.taskIdx !== null ? 'Update Task' : 'Add Task'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
