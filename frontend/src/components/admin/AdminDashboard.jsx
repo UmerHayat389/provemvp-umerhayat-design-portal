@@ -175,8 +175,35 @@ const AdminDashboard = () => {
     { title: "Salary",    value: stats.salary,    icon: <FaMoneyBillWave />, bg: "bg-green-500"  },
   ];
 
-  const cardCls = "p-5 rounded-xl shadow-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 transition-all duration-300 hover:shadow-xl";
-  const cardTitle = "font-semibold mb-4 text-gray-800 dark:text-gray-100";
+  const cardCls = "p-4 rounded-xl shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700";
+  const cardTitle = "text-xs font-bold uppercase tracking-wide mb-3 text-gray-500 dark:text-gray-400";
+
+  const compactChartOpts = {
+    ...chartOptions,
+    maintainAspectRatio: false,
+    plugins: {
+      ...chartOptions.plugins,
+      legend: {
+        position: "top",
+        labels: { color: isDark ? "#E5E7EB" : "#374151", font: { size: 10 }, boxWidth: 10, padding: 8 },
+      },
+    },
+    scales: {
+      x: { ticks: { color: isDark ? "#9CA3AF" : "#6B7280", font: { size: 9 } }, grid: { color: isDark ? "#2d3748" : "#f0f0f0" } },
+      y: { ticks: { color: isDark ? "#9CA3AF" : "#6B7280", font: { size: 9 } }, grid: { color: isDark ? "#2d3748" : "#f0f0f0" } },
+    },
+  };
+
+  const compactDoughnutOpts = {
+    ...doughnutOptions,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "top",
+        labels: { color: isDark ? "#E5E7EB" : "#374151", font: { size: 10 }, boxWidth: 10, padding: 8 },
+      },
+    },
+  };
 
   if (loading) {
     return (
@@ -190,78 +217,76 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-300 p-6">
-      <div className="space-y-8 animate-fadeIn">
+    <div className="bg-gray-50 dark:bg-gray-950 transition-colors duration-300 p-4">
+      <div className="space-y-4 animate-fadeIn">
 
-        {/* ── Header with live badge ── */}
+        {/* ── Header ── */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Admin Dashboard</h1>
-
-          </div>
+          <h1 className="text-base font-bold text-gray-900 dark:text-gray-100">Admin Dashboard</h1>
           <LiveBadge />
         </div>
 
         {/* ── STAT CARDS ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {statCards.map((card, i) => (
-            <div
-              key={i}
-              className={`${card.bg} text-white p-5 rounded-xl shadow-lg flex justify-between items-center transform hover:scale-105 transition-all duration-300`}
-            >
+            <div key={i} className={`${card.bg} text-white px-4 py-3 rounded-xl flex justify-between items-center`}>
               <div>
-                <p className="text-sm opacity-90">{card.title}</p>
-                <h2 className="text-2xl font-bold">{card.value}</h2>
+                <p className="text-[11px] opacity-80 font-medium">{card.title}</p>
+                <h2 className="text-lg font-bold mt-0.5">{card.value}</h2>
               </div>
-              <div className="text-3xl bg-white/20 p-3 rounded-lg">{card.icon}</div>
+              <div className="text-lg bg-white/20 p-2 rounded-lg">{card.icon}</div>
             </div>
           ))}
         </div>
 
-        {/* ── CHARTS ROW 1 ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* ── ALL 4 CHARTS in 2x2 grid ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div className={cardCls}>
-            <h3 className={cardTitle}>Total Employees By Department</h3>
-            {deptData.length > 0
-              ? <Doughnut data={departmentChart} options={doughnutOptions} />
-              : <p className="text-sm text-gray-400 text-center py-10">No department data</p>
-            }
+            <h3 className={cardTitle}>Employees By Department</h3>
+            <div style={{ height: '190px' }}>
+              {deptData.length > 0
+                ? <Doughnut data={departmentChart} options={compactDoughnutOpts} />
+                : <p className="text-xs text-gray-400 text-center pt-16">No department data</p>
+              }
+            </div>
           </div>
           <div className={cardCls}>
-            <h3 className={cardTitle}>Total Salary By Month</h3>
-            {salaryData.labels.length > 0
-              ? <Bar data={salaryChart} options={chartOptions} />
-              : <p className="text-sm text-gray-400 text-center py-10">No salary data</p>
-            }
-          </div>
-        </div>
-
-        {/* ── CHARTS ROW 2 ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className={cardCls}>
-            <h3 className={cardTitle}>Employee Projects (Assigned vs Completed)</h3>
-            {empProjects.length > 0
-              ? <Line data={projectChart} options={chartOptions} />
-              : <p className="text-sm text-gray-400 text-center py-10">No project data</p>
-            }
+            <h3 className={cardTitle}>Salary By Month</h3>
+            <div style={{ height: '190px' }}>
+              {salaryData.labels.length > 0
+                ? <Bar data={salaryChart} options={compactChartOpts} />
+                : <p className="text-xs text-gray-400 text-center pt-16">No salary data</p>
+              }
+            </div>
           </div>
           <div className={cardCls}>
-            <h3 className={cardTitle}>Employee Attendance Overview</h3>
-            {empAttendance.length > 0
-              ? <Bar data={attendanceChart} options={chartOptions} />
-              : <p className="text-sm text-gray-400 text-center py-10">No attendance data</p>
-            }
+            <h3 className={cardTitle}>Projects — Assigned vs Completed</h3>
+            <div style={{ height: '190px' }}>
+              {empProjects.length > 0
+                ? <Line data={projectChart} options={compactChartOpts} />
+                : <p className="text-xs text-gray-400 text-center pt-16">No project data</p>
+              }
+            </div>
+          </div>
+          <div className={cardCls}>
+            <h3 className={cardTitle}>Attendance Overview</h3>
+            <div style={{ height: '190px' }}>
+              {empAttendance.length > 0
+                ? <Bar data={attendanceChart} options={compactChartOpts} />
+                : <p className="text-xs text-gray-400 text-center pt-16">No attendance data</p>
+              }
+            </div>
           </div>
         </div>
 
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to   { opacity: 1; transform: translateY(0);    }
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0);   }
         }
-        .animate-fadeIn { animation: fadeIn 0.5s ease-out; }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
       `}</style>
     </div>
   );

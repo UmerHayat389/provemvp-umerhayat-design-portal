@@ -74,7 +74,7 @@ const Bar = ({ value, color, thin }) => (
 );
 
 // shared field class
-const fc = "w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0C2B4E]/20 dark:focus:ring-[#4d9de0]/20 focus:border-[#0C2B4E] dark:focus:border-[#4d9de0] transition-all";
+const fc = "w-full px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0C2B4E]/20 dark:focus:ring-[#4d9de0]/20 focus:border-[#0C2B4E] dark:focus:border-[#4d9de0] transition-all ap-select";
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const Styles = () => (
@@ -102,6 +102,20 @@ const Styles = () => (
     .ap-row:hover { background:rgba(12,43,78,.05); }
     .dark .ap-row:hover { background:rgba(255,255,255,.06); }
     .ap-row { transition:background .12s; }
+    .ap-select option {
+      background:#1e293b;
+      color:#f1f5f9;
+      padding:8px 12px;
+    }
+    .ap-select option:checked,
+    .ap-select option:hover {
+      background:#0C2B4E;
+      color:#ffffff;
+    }
+    .ap-select option:disabled {
+      color:#64748b;
+      background:#1e293b;
+    }
   `}</style>
 );
 
@@ -277,9 +291,9 @@ export default function AdminProjects() {
   if (view === 'form') return (
     <div className="ap-root min-h-screen bg-gray-50 dark:bg-gray-950 px-4 py-6 sm:px-8">
       <Styles/>
-      <div className="max-w-3xl mx-auto ap-up">
+      <div className="max-w-6xl mx-auto ap-up">
 
-        <div className="flex items-center gap-3 mb-7">
+        <div className="flex items-center gap-3 mb-6">
           <button onClick={() => setView('list')} className="p-2 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-gray-800 text-gray-400 hover:text-gray-700 dark:hover:text-white transition-all">
             <ArrowLeft size={16}/>
           </button>
@@ -289,34 +303,36 @@ export default function AdminProjects() {
           </div>
         </div>
 
-        <div className="space-y-4">
+        {/* Two-column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
-          {/* Project Info */}
+          {/* LEFT — Project Info */}
           <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
             <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-4">Project Info</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="space-y-3.5">
 
-              <div className="sm:col-span-2">
+              <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Title <span className="text-rose-400">*</span></label>
                 <input value={form.title} onChange={e => setForm(f => ({...f, title:e.target.value}))} placeholder="e.g. Website Redesign" className={fc}/>
               </div>
 
-              <div className="sm:col-span-2">
+              <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Description <span className="text-rose-400">*</span></label>
                 <textarea value={form.description} onChange={e => setForm(f => ({...f, description:e.target.value}))} rows={3} placeholder="Goals and scope of this project…" className={`${fc} resize-none`}/>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Start Date</label>
-                <input type="date" value={form.startDate} onChange={e => setForm(f => ({...f, startDate:e.target.value}))} style={{colorScheme:'dark'}} className={fc}/>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Start Date</label>
+                  <input type="date" value={form.startDate} onChange={e => setForm(f => ({...f, startDate:e.target.value}))} style={{colorScheme:'dark'}} className={fc}/>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Deadline <span className="text-rose-400">*</span></label>
+                  <input type="date" value={form.deadline} onChange={e => setForm(f => ({...f, deadline:e.target.value}))} style={{colorScheme:'dark'}} className={fc}/>
+                </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Deadline <span className="text-rose-400">*</span></label>
-                <input type="date" value={form.deadline} onChange={e => setForm(f => ({...f, deadline:e.target.value}))} style={{colorScheme:'dark'}} className={fc}/>
-              </div>
-
-              <div className="sm:col-span-2">
                 <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Priority</label>
                 <div className="flex gap-2">
                   {PRIORITIES.map(p => {
@@ -332,7 +348,7 @@ export default function AdminProjects() {
               </div>
 
               {editProject && (
-                <div className="sm:col-span-2">
+                <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Status</label>
                   <select value={form.status} onChange={e => setForm(f => ({...f, status:e.target.value}))} style={{colorScheme:'dark'}} className={fc}>
                     {STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -340,28 +356,29 @@ export default function AdminProjects() {
                 </div>
               )}
 
-              <div className="sm:col-span-2">
+              <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Admin Notes</label>
                 <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes:e.target.value}))} rows={2} placeholder="Internal notes…" className={`${fc} resize-none`}/>
               </div>
             </div>
           </section>
 
-          {/* Team */}
-          <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Team</p>
-                <span className="px-1.5 py-0.5 rounded-md bg-[#0C2B4E] text-white text-[10px] font-bold">{form.team.length}</span>
+          {/* RIGHT — Team */}
+          <div className="space-y-4">
+            <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Team</p>
+                  <span className="px-1.5 py-0.5 rounded-md bg-[#0C2B4E] text-white text-[10px] font-bold">{form.team.length}</span>
+                </div>
+                <button type="button" onClick={addMember} className="ap-btn flex items-center gap-1.5 px-3 py-1.5 text-white text-[11px] font-semibold rounded-lg">
+                  <UserPlus size={13}/> Add Member
+                </button>
               </div>
-              <button type="button" onClick={addMember} className="ap-btn flex items-center gap-1.5 px-3 py-1.5 text-white text-[11px] font-semibold rounded-lg">
-                <UserPlus size={13}/> Add Member
-              </button>
-            </div>
 
-            <div className="space-y-3">
-              {form.team.map((member, mIdx) => {
-                const emp = getEmployee(member.userId); const isTaskOpen = activeTaskMember === mIdx;
+              <div className="space-y-3">
+                {form.team.map((member, mIdx) => {
+                  const emp = getEmployee(member.userId); const isTaskOpen = activeTaskMember === mIdx;
                 return (
                   <div key={mIdx} className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
                     <div className="p-3.5 bg-gray-50 dark:bg-gray-800/40">
@@ -458,7 +475,7 @@ export default function AdminProjects() {
           </section>
 
           {/* Actions */}
-          <div className="flex gap-3 pb-6">
+          <div className="flex gap-3 pb-2">
             <button type="button" onClick={() => setView('list')}
               className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
               Cancel
@@ -468,7 +485,8 @@ export default function AdminProjects() {
               {submitting ? 'Saving…' : editProject ? 'Update Project' : 'Create Project'}
             </button>
           </div>
-        </div>
+          </div>{/* end right column */}
+        </div>{/* end two-column grid */}
 
         {/* Task Modal */}
         {taskModal.open && (
